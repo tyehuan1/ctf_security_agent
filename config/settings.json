@@ -1,0 +1,42 @@
+{
+  "$comment": "Non-secret run configuration for the single fixed configuration (config_id=agent). Secrets live in .env.",
+  "config_id": "agent",
+  "agent_version": "0.1.0",
+  "model": {
+    "provider": "Duke AI Gateway (LiteLLM, OpenAI-compatible)",
+    "$comment": "UNVERIFIED model id: confirm with list_gateway_models.py and one tool-call cycle before any live attempt.",
+    "name": "gpt-4.1-mini",
+    "base_url": "https://litellm.oit.duke.edu",
+    "temperature": 0,
+    "timeout_s": 120
+  },
+  "retry": {"attempts": 2, "backoff_s": 2},
+  "budget": {
+    "$comment": "Pilot values. Enforced by the controller; model output cannot change them.",
+    "max_turns": 12,
+    "max_chars": 6000,
+    "tool_timeout_s": 45,
+    "attempt_deadline_s": 600,
+    "attempt_token_cap": 200000
+  },
+  "data": {
+    "dataset_json": "external/CTFTiny/ctftiny.json",
+    "dev_dataset_json": "external/NYU_CTF_Bench/development_dataset.json",
+    "evaluation_ids": "evaluation_ids.txt",
+    "path_remap": {
+      "$comment": "NTFS cannot hold '?'; the directory is extracted byte-identically from the pinned commit.",
+      "ctftiny/pwn/get_it?": "ctftiny/pwn/get_it_"
+    }
+  },
+  "target": {
+    "local_host": "target",
+    "network_prefix": "ctfeval",
+    "compose_timeout_s": 180,
+    "stop_timeout_s": 10
+  },
+  "paths": {
+    "results": "results.jsonl",
+    "traces_dir": "traces",
+    "runs_dir": "runs"
+  }
+}

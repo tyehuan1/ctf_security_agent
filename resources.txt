@@ -1,0 +1,21 @@
+Pinned data revisions (recorded 2026-11-08 with `git -C <repo> rev-parse HEAD`)
+
+NYU_CTF_Bench  https://github.com/NYU-LLM-CTF/NYU_CTF_Bench.git
+  commit 4c5744f55a31a58e03d6118c9dbb1c18e5bbdfa9  (2025-09-22)
+  path   external/NYU_CTF_Bench
+
+CTFTiny        https://github.com/NYU-LLM-CTF/CTFTiny.git
+  commit f1c9531672c45b24b7fb5f3aa44a7ac33d3602f8  (2026-03-10)
+  path   external/CTFTiny
+
+Loader         nyuctf==1.1.1 (PyPI)
+
+Windows checkout notes (content is unchanged; only on-disk layout differs)
+  - Repo-local git config: core.protectNTFS=false, core.autocrlf=false, core.eol=lf, core.longpaths=true
+    (autocrlf=false keeps LF endings in run.sh / Dockerfiles used by Linux containers).
+  - CTFTiny: sparse-checkout excludes ctftiny/pwn/get_it?/ ('?' is illegal on NTFS). Its 13 files are
+    extracted via `git archive HEAD "ctftiny/pwn/get_it?"` into ctftiny/pwn/get_it_/; loader.py remaps
+    the manifest path. All 600 tracked files verified against the commit with `git hash-object --no-filters`.
+  - NYU_CTF_Bench: sparse-checkout excludes test/2018/CSAW-Quals/pwn/get_it?/ and
+    removed/2021/CSAW-Quals/misc/Survey-says.../ (neither is used for evaluation).
+  - Instructor pinned revisions: compare against the kit's resources.txt when it is released.
