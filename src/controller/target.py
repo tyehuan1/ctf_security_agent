@@ -111,8 +111,22 @@ class Target:
     def _compose(self, *args: str) -> subprocess.CompletedProcess:
         return _run(["docker", "compose", "-p", self.project, "-f", str(self.compose_file), *args], self.timeout)
 
+    def ensure_network(self) -> str:
+        """Create the per-attempt internal network if absent. Idempotent."""
+        existing = _run(["docker", "network", "ls", "-q", "--filter", f"name=^{self.network}$"], 30).stdout.strip()
+        if not existing:
+            res = _run(["docker", "network", "create", "--internal", self.network], 60)
+            if res.returncode != 0:
+                raise TargetError(f"docker network create failed: {res.stderr.strip()[:300]}")
+        return self.network
+
     def start(self) -> Optional[dict]:
-        """Fresh target for this attempt. Returns the local endpoint, or None for file-only challenges."""
+        """Fresh target for this attempt. Returns the local endpoint, or None for file-only challenges.
+
+        Always creates the per-attempt internal network so the solver sandbox can attach even for
+        file-only challenges (sandbox sees no hosts in that case — which is correct).
+        """
+        self.ensure_network()
         if not self.has_service:
             return None
         self.render()

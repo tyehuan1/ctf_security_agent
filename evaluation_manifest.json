@@ -1,0 +1,102 @@
+{
+  "split": "evaluation",
+  "dataset": "external/CTFTiny/ctftiny.json",
+  "dataset_sha256": "8ac0e735557316969af241510bf31930bb148f4f133915e7e823505ea599cd9d",
+  "source_commit": "f1c9531672c45b24b7fb5f3aa44a7ac33d3602f8",
+  "created_at": "2026-11-09T03:33:18+00:00",
+  "trials_per_challenge": 3,
+  "config_id": "agent",
+  "n_challenges": 10,
+  "challenges": [
+    {
+      "challenge_id": "cry-hybrid2",
+      "category": "cry",
+      "year": "2020",
+      "event": "CSAW-Finals",
+      "challenge": "hybrid2",
+      "path": "ctftiny/cry/hybrid2",
+      "difficulty": "Very Easy"
+    },
+    {
+      "challenge_id": "rev-whataxor",
+      "category": "rev",
+      "year": "2023",
+      "event": "CSAW-Quals",
+      "challenge": "whataxor",
+      "path": "ctftiny/rev/whataxor",
+      "difficulty": "Very Easy"
+    },
+    {
+      "challenge_id": "pwn-target-practice",
+      "category": "pwn",
+      "year": "2023",
+      "event": "CSAW-Quals",
+      "challenge": "target practice",
+      "path": "ctftiny/pwn/target practice",
+      "difficulty": "Easy"
+    },
+    {
+      "challenge_id": "web-smug-dino",
+      "category": "web",
+      "year": "2023",
+      "event": "CSAW-Quals",
+      "challenge": "smug-dino",
+      "path": "ctftiny/web/smug-dino",
+      "difficulty": "Easy"
+    },
+    {
+      "challenge_id": "for-1black0white",
+      "category": "for",
+      "year": "2023",
+      "event": "CSAW-Quals",
+      "challenge": "1black0white",
+      "path": "ctftiny/for/1black0white",
+      "difficulty": "Easy"
+    },
+    {
+      "challenge_id": "pwn-get-it",
+      "category": "pwn",
+      "year": "2018",
+      "event": "CSAW-Quals",
+      "challenge": "get_it?",
+      "path": "ctftiny/pwn/get_it?",
+      "difficulty": "Moderate"
+    },
+    {
+      "challenge_id": "rev-beleaf",
+      "category": "rev",
+      "year": "2019",
+      "event": "CSAW-Quals",
+      "challenge": "beleaf",
+      "path": "ctftiny/rev/beleaf",
+      "difficulty": "Moderate"
+    },
+    {
+      "challenge_id": "cry-describeme",
+      "category": "cry",
+      "year": "2023",
+      "event": "CSAW-Finals",
+      "challenge": "DescribeMe",
+      "path": "ctftiny/cry/DescribeMe",
+      "difficulty": "Moderate"
+    },
+    {
+      "challenge_id": "rev-the-big-bang",
+      "category": "rev",
+      "year": "2022",
+      "event": "CSAW-Quals",
+      "challenge": "the_big_bang",
+      "path": "ctftiny/rev/the_big_bang",
+      "difficulty": "Hard"
+    },
+    {
+      "challenge_id": "pwn-roppity",
+      "category": "pwn",
+      "year": "2020",
+      "event": "CSAW-Quals",
+      "challenge": "roppity",
+      "path": "ctftiny/pwn/roppity",
+      "difficulty": "Hard"
+    }
+  ]
+}

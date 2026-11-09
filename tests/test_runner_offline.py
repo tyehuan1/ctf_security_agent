@@ -69,5 +69,40 @@ class RunnerOfflineTest(unittest.TestCase):
         self.assertTrue(all(len(o.get("output", "")) < 600 for o in solver.seen[-1][1:]))
 
 
+class HangingSolver(ScriptedSolver):
+    def __init__(self):
+        super().__init__([])
+        self.killed = False
+
+    def request_next_action(self, observations):
+        import time
+        time.sleep(30)               # a runaway model call
+        return Action("give_up"), {}
+
+    def kill(self):
+        self.killed = True
+
+
+@unittest.skipUnless(DATA, "external/CTFTiny not cloned")
+class HardDeadlineTest(unittest.TestCase):
+    def test_runaway_model_call_cut_off_at_attempt_deadline(self):
+        import time
+        settings = config.load_settings()
+        settings["budget"]["attempt_deadline_s"] = 1
+        solver = HangingSolver()
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            started = time.monotonic()
+            rec = run_attempt(KEY, 1, solver, settings=settings, sample_type="synthetic",
+                              results_path=t / "results.jsonl", traces_dir=t / "traces", runs_dir=t / "runs")
+            took = time.monotonic() - started
+            events = [json.loads(l)["event"] for l in (t / "traces" / f"{rec['run_id']}.jsonl").read_text().splitlines()]
+        self.assertEqual(rec["status"], "timeout")
+        self.assertLess(took, 5)
+        self.assertTrue(solver.killed)
+        self.assertIn("budget_stop", events)
+        self.assertEqual(events[-1], "attempt_ended")
+
+
 if __name__ == "__main__":
     unittest.main()

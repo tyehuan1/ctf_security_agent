@@ -95,6 +95,36 @@ class AttemptBudget:
         }
 
 
+class DeadlineExceeded(RuntimeError):
+    """A model call or tool ran past the time the controller allowed it."""
+
+
+def call_with_deadline(fn: Callable, timeout_s: float, *args, **kwargs):
+    """Run fn in a worker thread; raise DeadlineExceeded if it has not returned within timeout_s.
+
+    This bounds the controller's wait, not the work itself: the caller must then kill the
+    execution environment (solver container / HTTP session) so nothing keeps running.
+    """
+    import threading
+
+    box: dict = {}
+
+    def work():
+        try:
+            box["value"] = fn(*args, **kwargs)
+        except BaseException as err:  # re-raised in the controller thread
+            box["error"] = err
+
+    t = threading.Thread(target=work, daemon=True, name="deadline-call")
+    t.start()
+    t.join(max(0.0, timeout_s))
+    if t.is_alive():
+        raise DeadlineExceeded(f"call exceeded {timeout_s:.1f}s")
+    if "error" in box:
+        raise box["error"]
+    return box.get("value")
+
+
 def truncate(text: str, max_chars: int) -> tuple[str, Optional[dict]]:
     """Cap captured output, keeping head and tail. Returns (text, truncation info or None)."""
     if text is None or len(text) <= max_chars:
