@@ -34,6 +34,7 @@ TRACE_EVENTS = frozenset({
     "submission",           # candidate flag text
     "verification",         # {"verified": bool}
     "budget_stop",          # which cap was hit
+    "rate_limit_wait",      # gateway 429: seconds waited, source (retry-after/default), retry number
     "error",
     "attempt_ended",        # stopping reason + terminal status
 })

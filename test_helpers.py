@@ -121,11 +121,37 @@ class DeadlineAndUsageTest(unittest.TestCase):
         with self.assertRaises(ZeroDivisionError):
             call_with_deadline(lambda: 1 / 0, 1)
 
-    def test_usage_from_gateway(self):
+    PRICING = {"input_per_m": 0.40, "cached_input_per_m": 0.10, "output_per_m": 1.60}
+
+    def test_usage_from_gateway_header_cost(self):
         body = {"usage": {"prompt_tokens": 66, "completion_tokens": 13}}
-        self.assertEqual(usage_from_gateway(body, {"x-litellm-response-cost": "3.8e-05"}),
-                         {"input_tokens": 66, "output_tokens": 13, "cost_usd": 3.8e-05})
-        self.assertEqual(usage_from_gateway({}, {}), {"input_tokens": None, "output_tokens": None, "cost_usd": None})
+        u = usage_from_gateway(body, {"x-litellm-response-cost": "3.8e-05"}, self.PRICING)
+        self.assertEqual((u["input_tokens"], u["output_tokens"], u["cost_usd"], u["cost_source"]),
+                         (66, 13, 3.8e-05, "header"))
+
+    def test_usage_rate_fallback_reproduces_gateway_cost(self):
+        # Real 2026-11-08 response: 16492 in (16384 cached), 23 out; header said 0.0017184.
+        body = {"usage": {"prompt_tokens": 16492, "completion_tokens": 23,
+                          "prompt_tokens_details": {"cached_tokens": 16384}}}
+        u = usage_from_gateway(body, {}, self.PRICING)
+        self.assertAlmostEqual(u["cost_usd"], 0.0017184, places=10)
+        self.assertEqual(u["cost_source"], "rate")
+
+    def test_usage_rate_estimate_without_cached_info_and_unknowns(self):
+        u = usage_from_gateway({"usage": {"prompt_tokens": 1000, "completion_tokens": 100}}, {}, self.PRICING)
+        self.assertAlmostEqual(u["cost_usd"], (1000 * 0.40 + 100 * 1.60) / 1e6)
+        self.assertEqual(u["cost_source"], "rate_estimate")
+        none = usage_from_gateway({}, {}, self.PRICING)
+        self.assertEqual((none["input_tokens"], none["cost_usd"], none["cost_source"]), (None, None, None))
+        no_pricing = usage_from_gateway({"usage": {"prompt_tokens": 5, "completion_tokens": 1}}, {})
+        self.assertIsNone(no_pricing["cost_usd"])          # no header and no pricing configured
+
+    def test_a4_fields_unchanged_and_rate_limit_event_registered(self):
+        from common.schemas import RESULT_FIELDS, TRACE_EVENTS
+        self.assertEqual(RESULT_FIELDS, ("run_id", "config_id", "challenge_id", "trial", "status", "verified",
+                                         "elapsed_s", "input_tokens", "output_tokens", "cost_usd",
+                                         "trace_file", "reset_id", "sample_type"))
+        self.assertIn("rate_limit_wait", TRACE_EVENTS)
 
 
 if __name__ == "__main__":

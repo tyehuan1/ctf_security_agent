@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from common import config  # noqa: E402
 from common.schemas import CONFIG_ID, TRIALS, make_result  # noqa: E402
+from controller.pacing import wait_for_rate_window  # noqa: E402
 from controller.record import append_result, load_results  # noqa: E402
 
 LOCK_NAME = ".run_batch.lock"
@@ -129,11 +130,14 @@ def main(argv: list[str] | None = None) -> int:
         todo = plan(manifest, load_results(results_path))
         if a.max_attempts is not None:
             todo = todo[:max(0, a.max_attempts)]
-        print(f"running {len(todo)} attempt(s) of {3 * n} planned")
-        for cid, trial in todo:
-            rec = run_attempt(cid, trial, make_solver(), settings=settings)
+        print(f"running {len(todo)} attempt(s) of {3 * n} planned, strictly one at a time")
+        last_tokens = None
+        for cid, trial in todo:                       # sequential by design: never parallel attempts
+            wait_for_rate_window(settings, last_tokens)
+            rec = run_attempt(cid, trial, make_solver, settings=settings)
+            last_tokens = (rec["input_tokens"] or 0) + (rec["output_tokens"] or 0) or None
             print(f"{cid} t{trial}: {rec['status']} verified={rec['verified']} {rec['elapsed_s']}s "
-                  f"in={rec['input_tokens']} out={rec['output_tokens']}")
+                  f"in={rec['input_tokens']} out={rec['output_tokens']} cost={rec['cost_usd']}")
     return 0
 
 

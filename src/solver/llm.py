@@ -23,7 +23,11 @@ NOT_RETRYABLE = {400, 401, 403, 404, 422}
 
 
 class LLMError(RuntimeError):
-    """The model service could not produce a reply (after retry)."""
+    """The model service could not produce a reply (after retry). .waits lists any 429 waits."""
+
+    def __init__(self, message: str, waits: Optional[list] = None):
+        super().__init__(message)
+        self.waits = list(waits or [])
 
 
 @dataclass
@@ -63,7 +67,16 @@ class GatewayClient:
 
     def chat(self, messages: list[dict], *, tools: Optional[list[dict]] = None,
              timeout_s: Optional[float] = None, purpose: str = "") -> ModelReply:
-        request_timeout = float(timeout_s or self.model.get("timeout_s", 120))
+        """One chat completion that must finish within timeout_s seconds (all tries and waits).
+
+        Ordinary failures: up to retry.attempts tries, retry.backoff_s apart.
+        HTTP 429 (the gateway's per-key TPM/RPM limit): wait Retry-After, or
+        rate_limit.default_wait_s when absent, then try again, at most rate_limit.max_429_retries
+        times, and only when the wait still fits the remaining time. Each wait is returned in
+        usage["rate_limit_waits"] (or on LLMError.waits) for the controller to trace. A 429 that
+        survives every retry raises LLMError, which the controller records as infrastructure_error.
+        """
+        budget = float(timeout_s or self.model.get("timeout_s", 200))
         body = {"model": self.model["name"], "messages": messages,
                 "temperature": self.model.get("temperature", 0)}
         if tools:
@@ -72,29 +85,59 @@ class GatewayClient:
 
         attempts = int(self.settings.get("retry", {}).get("attempts", 2))
         backoff = float(self.settings.get("retry", {}).get("backoff_s", 2))
+        rl = self.settings.get("rate_limit", {})
+        max_429 = int(rl.get("max_429_retries", 3))
+        default_wait = float(rl.get("default_wait_s", 65))
+        pricing = self.model.get("pricing")
         headers = {"Authorization": f"Bearer {self._token()}"}
         last_err = None
         started = time.monotonic()
+        deadline = started + budget
         # Retries count toward the attempt's usage (Appendix A6). A failed try adds whatever usage
         # its body reports; a timeout or 5xx may have consumed tokens the gateway never reported,
         # so it marks the call's usage as incomplete (traced; totals are then known subtotals).
+        # A 429 is rejected by the gateway before the model runs, so it consumes no tokens.
         failed_usage = {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
         incomplete = False
-        for i in range(1, attempts + 1):
+        tries = failures = rate_retries = 0
+        waits: list[dict] = []
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining < 1:
+                last_err = (last_err or "no time left") + f" (call budget of {budget:.0f}s used up)"
+                break
+            tries += 1
             try:
-                r = requests.post(self.url, headers=headers, json=body, timeout=request_timeout)
+                r = requests.post(self.url, headers=headers, json=body, timeout=remaining)
                 if r.status_code < 400:
                     data = r.json()
                     latency = int((time.monotonic() - started) * 1000)
                     reply = self._parse(data, r.headers, latency)
-                    reply.usage = self._merge_failed(reply.usage, failed_usage, attempts=i, incomplete=incomplete)
+                    reply.usage = self._merge_failed(reply.usage, failed_usage, attempts=tries, incomplete=incomplete)
+                    reply.usage["rate_limit_waits"] = waits
                     self._log({"call_index": self.calls, "purpose": purpose, "request": body,
                                "response": data, "cost_header": r.headers.get("x-litellm-response-cost"),
-                               "latency_ms": latency, "attempt": i, "usage": reply.usage})
+                               "latency_ms": latency, "attempt": tries, "usage": reply.usage})
                     return reply
                 last_err = f"HTTP {r.status_code}: {r.text[:300]}"
+                if r.status_code == 429:
+                    wait, wait_source = self._retry_after(r.headers), "retry-after"
+                    if wait is None:
+                        wait, wait_source = default_wait, "default"
+                    if rate_retries >= max_429:
+                        last_err += f" (rate limited; {max_429} waits already spent)"
+                        break
+                    if time.monotonic() + wait + 5 > deadline:
+                        last_err += (f" (rate limited; a {wait:.0f}s wait does not fit the remaining "
+                                     f"{deadline - time.monotonic():.0f}s)")
+                        break
+                    rate_retries += 1
+                    waits.append({"purpose": purpose, "wait_s": wait, "wait_source": wait_source,
+                                  "retry": rate_retries, "detail": r.text[:200]})
+                    time.sleep(wait)
+                    continue
                 try:
-                    fu = usage_from_gateway(r.json(), r.headers)
+                    fu = usage_from_gateway(r.json(), r.headers, pricing)
                 except ValueError:
                     fu = dict(NO_USAGE)
                 for k in failed_usage:
@@ -102,16 +145,32 @@ class GatewayClient:
                         failed_usage[k] += fu[k]
                 if r.status_code >= 500:
                     incomplete = True
+                failures += 1
                 if r.status_code in NOT_RETRYABLE:
                     break
             except requests.RequestException as err:
                 last_err = f"{type(err).__name__}: {err}"
                 if isinstance(err, (requests.Timeout, requests.ConnectionError)):
                     incomplete = True
-            if i < attempts:
-                time.sleep(backoff)
-        self._log({"purpose": purpose, "request": body, "error": last_err, "attempts": attempts})
-        raise LLMError(f"gateway call '{purpose or 'chat'}' failed after {attempts}: {last_err}")
+                failures += 1
+            if failures >= attempts:
+                break
+            time.sleep(min(backoff, max(0.0, deadline - time.monotonic())))
+        self._log({"purpose": purpose, "request": body, "error": last_err, "tries": tries,
+                   "rate_limit_waits": waits})
+        raise LLMError(f"gateway call '{purpose or 'chat'}' failed after {tries} tries: {last_err}", waits=waits)
+
+    @staticmethod
+    def _retry_after(headers) -> Optional[float]:
+        """Seconds from a numeric Retry-After header; None when absent, zero, or not a number."""
+        raw = (headers or {}).get("retry-after")
+        if raw is None:
+            return None
+        try:
+            v = float(raw)
+        except (TypeError, ValueError):
+            return None
+        return v if v > 0 else None
 
     @staticmethod
     def _merge_failed(usage: dict, failed: dict, *, attempts: int, incomplete: bool) -> dict:
@@ -140,7 +199,7 @@ class GatewayClient:
             calls.append(ToolCall(id=cid or f"gen_{self.calls}_{i}",
                                   name=fn.get("name", ""), arguments=args, id_generated=not cid))
         return ModelReply(content=msg.get("content") or "", tool_calls=calls,
-                          usage=usage_from_gateway(data, headers), raw=data,
+                          usage=usage_from_gateway(data, headers, self.model.get("pricing")), raw=data,
                           finish_reason=choice.get("finish_reason"), latency_ms=latency_ms)
 
     def _log(self, entry: dict) -> None:

@@ -52,12 +52,14 @@ Record these with the results; do not change them between trials or challenges.
 | Agent commit | `git rev-parse HEAD` at launch (record in the writeup) |
 | Model ID | `GPT 4.1 Mini` (exact id from `GET /v1/models`, 2026-11-08) |
 | Route | Duke AI Gateway (LiteLLM, OpenAI-compatible) `https://litellm.oit.duke.edu/v1/chat/completions`, native tool calling, Duke VPN |
-| Settings | temperature 0.6, model request timeout 120 s (`config/settings.json`) |
-| Retry rules | at most 2 HTTP attempts per model request, 2 s backoff, no retry on 400/401/403/404/422; an attempt is never re-run — a recorded trial slot is final |
-| Limits (controller-enforced) | max_turns 12, max_chars 6000 per captured output (head+tail), tool_timeout_s 45, attempt_deadline_s 600 (hard: runaway calls are cut off and the solver killed), attempt_token_cap 200000 |
-| Usage | input/output tokens from each response's `usage`; `cost_usd` from the gateway's `x-litellm-response-cost` header, else null |
-| Prompts | `src/solver/prompts.py` (versioned) — to be written |
-| Tools / versions | `src/tools/` + solver image — to be written; record image digest and tool versions |
+| Settings | temperature 0.6, per-turn model time budget 200 s incl. retries and 429 waits (`config/settings.json`) |
+| Retry rules | ordinary failures: at most 2 tries, 2 s apart, no retry on 400/401/403/404/422. HTTP 429 (gateway per-key limit, 40K TPM / 20 RPM): wait `Retry-After` or 65 s, up to 3 times, only if the wait fits the turn's time; each wait traced as `rate_limit_wait`. A 429 that survives is `infrastructure_error`. An attempt is never re-run — a recorded trial slot is final |
+| Pacing | attempts strictly sequential; before each, a 1-token probe waits until the key's TPM/RPM window has cleared (fixed sleep from the last attempt's tokens if the headers are missing). Probes are batch overhead, not attempt usage |
+| Limits (controller-enforced) | max_turns 12 (one turn = one action; a no-tool nudge is an extra model call in the same turn), max_chars 3000 per tool output (non-printable bytes shown as `.`, then head+tail cap, applied before the model sees it), tool_timeout_s 45, attempt_deadline_s 600 (hard: runaway calls are cut off and the solver killed), attempt_token_cap 200000 |
+| Context | only the last 6 tool results are sent in full each turn; older ones are replaced by a short stub (the full history stays in the transcript) |
+| Usage | input/output tokens from each response's `usage`. `cost_usd` from the gateway's `x-litellm-response-cost` header; when missing, computed from tokens at the published rates in `model.pricing` ($0.40 / $0.10 cached / $1.60 per 1M). The source of each call's cost (`header`, `rate`, or `rate_estimate` when cached tokens are unreported) is in the trace only, not in `results.jsonl`; rate-computed costs are estimates |
+| Prompts | `src/solver/prompts.py`, `PROMPT_VERSION = ctf-solver-v2` |
+| Tools / versions | `src/tools/` (run_shell, inspect_file, python_exec, connect_endpoint, submit_flag); sandbox image `ctf-solver-sandbox:v1` (`docker image inspect` ID at freeze), pwntools 4.15.0, pycryptodome, requests, sympy, Debian binwalk 2.4.3 |
 | Isolation | sanitized per-attempt compose (no docker.sock, privileged, cap_add, published ports); internal per-attempt network; target alias `target` |
 | Dependencies | `requirements.txt` (pip freeze, Python 3.11.9) |
 

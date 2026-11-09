@@ -6,7 +6,7 @@ import unittest
 import tests  # noqa: F401
 from common import config
 from controller.verifier import Verification
-from solver.agent import MAX_NO_TOOL_NUDGES, Agent, _add_usage
+from solver.agent import KEEP_TOOL_RESULTS, MAX_NO_TOOL_NUDGES, Agent, _add_usage
 from solver.llm import ModelReply, ToolCall
 
 
@@ -28,7 +28,8 @@ class FakeClient:
         self.calls = []
 
     def chat(self, messages, *, tools=None, timeout_s=None, purpose=""):
-        self.calls.append({"timeout_s": timeout_s, "purpose": purpose})
+        self.calls.append({"timeout_s": timeout_s, "purpose": purpose,
+                           "messages": json.loads(json.dumps(messages))})
         return self.replies.pop(0)
 
 
@@ -74,6 +75,44 @@ class AgentLoopTest(unittest.TestCase):
         tool_msgs = [m for m in a.messages if m["role"] == "tool"]
         self.assertEqual(tool_msgs[0]["tool_call_id"], "s1")
         self.assertEqual(json.loads(tool_msgs[0]["content"])["verified"], False)
+
+
+class FakeRunner:
+    def execute(self, name, arguments, timeout_s):
+        return {"status": "ok", "output": f"full output of {arguments['command']}", "exit_code": 0}
+
+
+class ElisionTest(unittest.TestCase):
+    def test_long_conversation_sends_only_last_six_tool_results_in_full(self):
+        n = 10
+        a = agent_with([call("run_shell", {"command": f"cmd{i}"}, cid=f"c{i}") for i in range(n + 1)])
+        a.runner = FakeRunner()
+        for i in range(n):
+            action, _ = a.request_next_action([{}])
+            a.execute(action, 10)
+        a.request_next_action([{}])                       # the 11th call sees 10 tool results
+        sent = a.client.calls[-1]["messages"]
+        tools = [m for m in sent if m["role"] == "tool"]
+        full = [m for m in tools if "full output of" in m["content"]]
+        stubs = [m for m in tools if "elided" in m["content"]]
+        self.assertEqual((len(tools), len(full), len(stubs)), (n, KEEP_TOOL_RESULTS, n - KEEP_TOOL_RESULTS))
+        self.assertEqual([m["tool_call_id"] for m in full], [f"c{i}" for i in range(n - KEEP_TOOL_RESULTS, n)])
+        # every assistant tool_call still has a matching tool message
+        called = [tc["id"] for m in sent if m["role"] == "assistant" for tc in m.get("tool_calls", [])]
+        self.assertTrue(set(called[:-1]) <= {m["tool_call_id"] for m in tools})
+        self.assertEqual(sent[0]["role"], "system")
+        self.assertEqual(sent[1]["content"], "u")         # initial context kept
+        # internal history is untouched
+        self.assertEqual(sum("full output of" in m.get("content", "") for m in a.messages), n)
+
+    def test_short_conversation_is_not_elided(self):
+        a = agent_with([call("run_shell", {"command": "a"}, cid="c0"), call("run_shell", {"command": "b"}, cid="c1")])
+        a.runner = FakeRunner()
+        action, _ = a.request_next_action([{}])
+        a.execute(action, 10)
+        a.request_next_action([{}])
+        self.assertEqual(a.client.calls[-1]["messages"][-1]["role"], "tool")
+        self.assertIn("full output of a", a.client.calls[-1]["messages"][-1]["content"])
 
 
 if __name__ == "__main__":

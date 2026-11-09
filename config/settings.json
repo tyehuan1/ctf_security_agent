@@ -8,13 +8,29 @@
     "name": "GPT 4.1 Mini",
     "base_url": "https://litellm.oit.duke.edu",
     "temperature": 0.6,
-    "timeout_s": 120
+    "timeout_s": 200,
+    "pricing": {
+      "$comment": "USD per 1M tokens, used only when the x-litellm-response-cost header is missing. Matches GPT-4.1 mini list pricing; verified 2026-11-09 against gateway header costs (108 uncached + 16384 cached in, 23 out -> $0.0017184).",
+      "input_per_m": 0.40,
+      "cached_input_per_m": 0.10,
+      "output_per_m": 1.60
+    }
   },
   "retry": {"attempts": 2, "backoff_s": 2},
+  "rate_limit": {
+    "$comment": "Duke gateway per-key limits read from X-Ratelimit-Limit-* headers on 2026-11-09. 429s wait Retry-After (else default_wait_s) up to max_429_retries times; batches wait for the window between attempts.",
+    "tpm": 40000,
+    "rpm": 20,
+    "max_429_retries": 3,
+    "default_wait_s": 65,
+    "window_check": true,
+    "window_poll_s": 15,
+    "window_max_wait_s": 300
+  },
   "budget": {
     "$comment": "Pilot values. Enforced by the controller; model output cannot change them.",
     "max_turns": 12,
-    "max_chars": 6000,
+    "max_chars": 3000,
     "tool_timeout_s": 45,
     "attempt_deadline_s": 600,
     "attempt_token_cap": 200000

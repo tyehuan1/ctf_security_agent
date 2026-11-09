@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from common import config          # noqa: E402
 from controller import loader      # noqa: E402
+from controller.pacing import wait_for_rate_window  # noqa: E402
 from controller.runner import run_attempt  # noqa: E402
 from run_batch import make_solver  # noqa: E402
 
@@ -32,6 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--results", type=Path, default=None)
     ap.add_argument("--traces", type=Path, default=None)
     ap.add_argument("--runs", type=Path, default=None)
+    ap.add_argument("--no-wait", action="store_true", help="skip the pre-attempt rate-limit window check")
     a = ap.parse_args(argv)
 
     settings = config.load_settings()
@@ -43,6 +45,8 @@ def main(argv: list[str] | None = None) -> int:
     if a.challenge_id not in ds.dataset:
         raise SystemExit(f"challenge_id {a.challenge_id!r} not in {settings['data']['dataset_json']}")
 
+    if not a.no_wait:
+        wait_for_rate_window(settings)            # don't inherit a previous run's rate-limit window
     rec = run_attempt(a.challenge_id, a.trial, make_solver, settings=settings, ds=ds,
                       results_path=a.results, traces_dir=a.traces, runs_dir=a.runs)
     print(f"{rec['run_id']}: {rec['status']} verified={rec['verified']} elapsed_s={rec['elapsed_s']} "

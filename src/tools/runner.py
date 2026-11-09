@@ -21,6 +21,25 @@ MAX_INSPECT_BYTES_DEFAULT = 512
 MAX_RECV = 65536
 
 
+def clean_binary(text: str) -> tuple[str, int]:
+    """Replace non-printable characters with '.', keeping newline and tab (strings/xxd style).
+
+    Raw binary decoded with errors="replace" yields control characters and U+FFFD, each of which
+    JSON-escapes to a 6-character \\uXXXX sequence and tokenizes badly; one capped `head` of an
+    ELF reached ~14K tokens in the pilot. Returns (cleaned text, number of characters replaced).
+    """
+    if text.isascii() and text.isprintable():
+        return text, 0
+    out, n = [], 0
+    for c in text:
+        if c in "\n\t" or (c.isprintable() and c != "�"):
+            out.append(c)
+        else:
+            out.append(".")
+            n += 1
+    return "".join(out), n
+
+
 class ToolRunner:
     def __init__(self, sandbox: Sandbox, target_endpoint: Optional[dict], max_chars: int):
         self.sandbox = sandbox
@@ -62,8 +81,11 @@ class ToolRunner:
         out = res.stdout or ""
         if res.stderr:
             out = (out + ("\n--- stderr ---\n" if out else "") + res.stderr) if res.stderr.strip() else out
+        out, replaced = clean_binary(out)                    # clean first, so the cap measures real size
         out, info = truncate(out, self.max_chars)
         payload = {"status": res.status, "output": out, "exit_code": res.exit_code}
+        if replaced:
+            payload["binary_bytes_replaced"] = replaced
         if info:
             payload["truncated"] = info
         if res.status == "timeout":

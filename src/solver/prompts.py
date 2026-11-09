@@ -1,6 +1,6 @@
 """Versioned solver prompts. Part of the fixed config_id=agent configuration; record with the run."""
 
-PROMPT_VERSION = "ctf-solver-v1"
+PROMPT_VERSION = "ctf-solver-v2"   # v2: binary-file guidance in the tool contract notes
 
 SYSTEM_PROMPT = """\
 You are solving a Capture-the-Flag practice puzzle in an isolated educational benchmark \
@@ -40,6 +40,10 @@ Two hard rules you must follow:
 
 Tool contract notes:
   - Tool outputs are capped. If you need more, narrow the slice (xxd offset/length, grep, head).
+  - Do not cat or head binary files; use inspect_file (strings or xxd) instead. Non-printable \
+    bytes in tool output are shown as '.' and reported as binary_bytes_replaced.
+  - Only your most recent tool results are kept in full; older ones are replaced by a short note. \
+    If you need an earlier output again, re-run the tool.
   - Every tool call has a per-tool timeout. If a tool times out, try a smaller or more targeted \
     call rather than repeating the same one.
   - If you are stuck near the budget, call submit_flag with your best guess rather than looping; \

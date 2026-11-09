@@ -151,10 +151,18 @@ class Attempt:
             self.tracer("error", where="model_call", error=str(err), usage="unknown (call cut off by deadline)",
                         latency_ms=int((time.monotonic() - started) * 1000))
             raise
+        except Exception as err:                       # e.g. LLMError after 429 retries ran out
+            self._trace_rate_limit_waits(getattr(err, "waits", None))
+            raise
         usage = {**NO_USAGE, **(usage or {})}
+        self._trace_rate_limit_waits(usage.pop("rate_limit_waits", None))
         self.tracer("model_response", kind=action.kind, tool=action.tool, arguments=action.arguments,
                     usage=usage, latency_ms=int((time.monotonic() - started) * 1000))
         return action, usage
+
+    def _trace_rate_limit_waits(self, waits) -> None:
+        for w in waits or []:
+            self.tracer("rate_limit_wait", **w, elapsed_s=round(self.budget.elapsed_s, 3))
 
     def record_model_usage(self, usage: dict) -> None:
         self.budget.record_usage(usage["input_tokens"], usage["output_tokens"], usage["cost_usd"])

@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-from solver.llm import GatewayClient, ModelReply, ToolCall
+from solver.llm import GatewayClient, LLMError, ModelReply, ToolCall
 from solver.prompts import PROMPT_VERSION, SYSTEM_PROMPT
 from solver.sandbox import Sandbox
 from tools.runner import ToolRunner
@@ -28,6 +28,9 @@ from tools.specs import tool_specs
 from common.usage import NO_USAGE
 
 MAX_NO_TOOL_NUDGES = 2
+CONTROLLER_MARGIN_S = 5            # finish each turn this far inside the controller's per-call deadline
+KEEP_TOOL_RESULTS = 6              # tool results sent verbatim; older ones are elided in the payload
+ELIDED_STUB = json.dumps({"note": "earlier output elided to save context; re-run the tool if you need it"})
 NO_TOOL_NUDGE = (
     "You replied without calling a tool. You must act by calling one of the tools "
     "(run_shell, inspect_file, python_exec, connect_endpoint) or submit_flag. "
@@ -46,8 +49,13 @@ def _add_usage(total: Optional[dict], u: dict) -> dict:
     for k in ("input_tokens", "output_tokens", "cost_usd"):
         a, b = total.get(k), u.get(k)
         out[k] = None if a is None or b is None else a + b
+    a, b = total.get("cached_tokens"), u.get("cached_tokens")
+    out["cached_tokens"] = None if a is None or b is None else a + b
     out["attempts"] = (total.get("attempts") or 0) + (u.get("attempts") or 0)
     out["usage_incomplete"] = bool(total.get("usage_incomplete") or u.get("usage_incomplete"))
+    out["rate_limit_waits"] = list(total.get("rate_limit_waits") or []) + list(u.get("rate_limit_waits") or [])
+    sources = {total.get("cost_source"), u.get("cost_source")}
+    out["cost_source"] = sources.pop() if len(sources) == 1 else "mixed"
     return out
 
 
@@ -137,9 +145,10 @@ class Agent:
             self._awaiting = None
 
         self.turns_used += 1
-        # One controller turn may take several gateway calls (nudges). They share one time budget
-        # so the whole request stays inside the controller's per-call deadline (model timeout_s).
-        budget_s = float(self.settings["model"].get("timeout_s", 120))
+        # One controller turn may take several gateway calls (nudges) and 429 waits. They share
+        # one time budget, kept a few seconds under the controller's per-call deadline
+        # (model timeout_s) so the agent fails cleanly before the controller cuts it off.
+        budget_s = float(self.settings["model"].get("timeout_s", 200)) - CONTROLLER_MARGIN_S
         started = time.monotonic()
         usage_total: Optional[dict] = None
         reply = None
@@ -148,8 +157,12 @@ class Agent:
             if left < 5:                                     # no time for another call this turn
                 break
             n_assistant = len([m for m in self.messages if m["role"] == "assistant"])
-            reply = self.client.chat(self.messages, tools=self.specs, timeout_s=left,
-                                     purpose=f"turn_{self.turns_used}_call_{n_assistant + 1}")
+            try:
+                reply = self.client.chat(self.payload(), tools=self.specs, timeout_s=left,
+                                         purpose=f"turn_{self.turns_used}_call_{n_assistant + 1}")
+            except LLMError as err:                          # keep waits from earlier calls this turn
+                err.waits = (usage_total or {}).get("rate_limit_waits", []) + err.waits
+                raise
             self._append_assistant(reply)
             usage_total = _add_usage(usage_total, reply.usage)
             if reply.tool_calls:
@@ -182,6 +195,18 @@ class Agent:
         return result
 
     # ---------------------------------------------------------------- helpers
+
+    def payload(self) -> list[dict]:
+        """The message list sent to the gateway: a pruned copy of self.messages.
+
+        Keeps the system prompt, the initial context, every assistant message and every nudge.
+        Only the last KEEP_TOOL_RESULTS tool messages keep their content; older ones keep their
+        tool_call_id (so every assistant tool_call still has a matching result) with a short stub
+        as content. self.messages itself is never modified, so the transcript stays complete.
+        """
+        tool_idx = [i for i, m in enumerate(self.messages) if m["role"] == "tool"]
+        elide = set(tool_idx[:-KEEP_TOOL_RESULTS]) if len(tool_idx) > KEEP_TOOL_RESULTS else set()
+        return [dict(m, content=ELIDED_STUB) if i in elide else m for i, m in enumerate(self.messages)]
 
     def _pacing(self) -> dict:
         """Turns left, shown to the model so it can submit a best guess before the cap.
