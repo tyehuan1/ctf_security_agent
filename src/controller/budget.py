@@ -125,13 +125,5 @@ def call_with_deadline(fn: Callable, timeout_s: float, *args, **kwargs):
     return box.get("value")
 
 
-def truncate(text: str, max_chars: int) -> tuple[str, Optional[dict]]:
-    """Cap captured output, keeping head and tail. Returns (text, truncation info or None)."""
-    if text is None or len(text) <= max_chars:
-        return text, None
-    head = max_chars // 2
-    tail = max_chars - head
-    omitted = len(text) - head - tail
-    marker = f"\n...[truncated {omitted} chars]...\n"
-    return text[:head] + marker + text[-tail:], {"original_chars": len(text), "kept_head": head,
-                                                 "kept_tail": tail, "omitted": omitted}
+# Head+tail cap; shared with the solver's ToolRunner (re-exported here for controller imports).
+from common.truncate import truncate  # noqa: E402,F401

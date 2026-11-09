@@ -83,12 +83,17 @@ class BudgetTest(unittest.TestCase):
         ab.record_usage(None, 5)
         self.assertEqual(ab.totals(), {"input_tokens": None, "output_tokens": 5, "cost_usd": None})
 
-    def test_truncate_keeps_head_and_tail(self):
-        text = "H" * 50 + "M" * 1000 + "T" * 50
-        out, info = truncate(text, 100)
-        self.assertTrue(out.startswith("H" * 50) and out.endswith("T" * 50))
-        self.assertEqual(info["omitted"], 1000)
+    def test_truncate_keeps_head_and_tail_within_cap(self):
+        text = "H" * 500 + "M" * 10000 + "T" * 500
+        out, info = truncate(text, 200)
+        self.assertLessEqual(len(out), 200)                 # marker counts toward the cap
+        self.assertTrue(out.startswith("H" * info["kept_head"]) and out.endswith("T" * info["kept_tail"]))
+        self.assertEqual(info["kept_head"] + info["kept_tail"] + info["omitted"], len(text))
         self.assertEqual(truncate("short", 100), ("short", None))
+
+    def test_truncate_is_idempotent(self):
+        once, _ = truncate("x" * 50000, 6000)
+        self.assertEqual(truncate(once, 6000), (once, None))   # no double marker
 
 
 class TracerTest(unittest.TestCase):

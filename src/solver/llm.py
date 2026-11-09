@@ -75,6 +75,11 @@ class GatewayClient:
         headers = {"Authorization": f"Bearer {self._token()}"}
         last_err = None
         started = time.monotonic()
+        # Retries count toward the attempt's usage (Appendix A6). A failed try adds whatever usage
+        # its body reports; a timeout or 5xx may have consumed tokens the gateway never reported,
+        # so it marks the call's usage as incomplete (traced; totals are then known subtotals).
+        failed_usage = {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
+        incomplete = False
         for i in range(1, attempts + 1):
             try:
                 r = requests.post(self.url, headers=headers, json=body, timeout=request_timeout)
@@ -82,19 +87,41 @@ class GatewayClient:
                     data = r.json()
                     latency = int((time.monotonic() - started) * 1000)
                     reply = self._parse(data, r.headers, latency)
+                    reply.usage = self._merge_failed(reply.usage, failed_usage, attempts=i, incomplete=incomplete)
                     self._log({"call_index": self.calls, "purpose": purpose, "request": body,
                                "response": data, "cost_header": r.headers.get("x-litellm-response-cost"),
-                               "latency_ms": latency, "attempt": i})
+                               "latency_ms": latency, "attempt": i, "usage": reply.usage})
                     return reply
                 last_err = f"HTTP {r.status_code}: {r.text[:300]}"
+                try:
+                    fu = usage_from_gateway(r.json(), r.headers)
+                except ValueError:
+                    fu = dict(NO_USAGE)
+                for k in failed_usage:
+                    if fu.get(k) is not None:
+                        failed_usage[k] += fu[k]
+                if r.status_code >= 500:
+                    incomplete = True
                 if r.status_code in NOT_RETRYABLE:
                     break
             except requests.RequestException as err:
                 last_err = f"{type(err).__name__}: {err}"
+                if isinstance(err, (requests.Timeout, requests.ConnectionError)):
+                    incomplete = True
             if i < attempts:
                 time.sleep(backoff)
         self._log({"purpose": purpose, "request": body, "error": last_err, "attempts": attempts})
         raise LLMError(f"gateway call '{purpose or 'chat'}' failed after {attempts}: {last_err}")
+
+    @staticmethod
+    def _merge_failed(usage: dict, failed: dict, *, attempts: int, incomplete: bool) -> dict:
+        merged = dict(usage)
+        for k, extra in failed.items():
+            if extra and merged.get(k) is not None:
+                merged[k] = merged[k] + extra
+        merged["attempts"] = attempts
+        merged["usage_incomplete"] = incomplete
+        return merged
 
     def _parse(self, data: dict, headers, latency_ms: int) -> ModelReply:
         self.calls += 1

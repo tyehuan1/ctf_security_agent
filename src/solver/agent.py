@@ -24,6 +24,21 @@ from solver.prompts import PROMPT_VERSION, SYSTEM_PROMPT
 from solver.sandbox import Sandbox
 from tools.runner import ToolRunner
 from tools.specs import tool_specs
+from common.usage import NO_USAGE
+
+MAX_NO_TOOL_NUDGES = 2
+NO_TOOL_NUDGE = (
+    "You replied without calling a tool. You must act by calling one of the tools "
+    "(run_shell, inspect_file, python_exec, connect_endpoint) or submit_flag. "
+    "Do not reply with prose alone — call a tool now."
+)
+
+def _add_usage(a: dict, b: dict) -> dict:
+    out = dict(a)
+    for k in ("input_tokens", "output_tokens", "cost_usd"):
+        av, bv = a.get(k), b.get(k)
+        out[k] = None if (av is None and bv is None) else (av or 0) + (bv or 0)
+    return out
 
 
 @dataclass
@@ -61,8 +76,8 @@ class Agent:
         self.sandbox: Optional[Sandbox] = None
         self.runner: Optional[ToolRunner] = None
         self._awaiting: Optional[ToolCall] = None       # last tool call waiting for its result message
-        self._gave_up = False
-        self._verified = False
+        self.max_turns = int(settings["budget"]["max_turns"])   # read-only copy, for pacing hints only
+        self.turns_used = 0
 
     # ---------------------------------------------------------------- lifecycle
 
@@ -99,30 +114,38 @@ class Agent:
     # ---------------------------------------------------------------- loop API
 
     def request_next_action(self, observations: list) -> tuple[Action, dict]:
-        # If the previous turn was a submit_flag, the controller just appended a verification
-        # observation; wire it back to the model as the tool's result.
+        # After a submit_flag, the controller appended the verification observation. A verified
+        # submit ends the loop, so only a failed verification reaches here; hand it back as the
+        # tool result.
         if self._awaiting and self._awaiting.name == "submit_flag" and observations:
             last = observations[-1]
             verified = bool(getattr(last, "verified", False) or (isinstance(last, dict) and last.get("verified")))
             self.messages.append({
                 "role": "tool", "tool_call_id": self._awaiting.id,
-                "content": json.dumps({"verified": verified}),
+                "content": json.dumps({"verified": verified, **self._pacing()}),
             })
             self._awaiting = None
-            if verified:
-                self._verified = True
 
-        remaining = int(self.settings["budget"]["max_turns"]) - len([m for m in self.messages if m["role"] == "assistant"])
         timeout = float(self.settings["model"].get("timeout_s", 120))
-        reply = self.client.chat(self.messages, tools=self.specs, timeout_s=timeout,
-                                 purpose=f"turn_{len([m for m in self.messages if m['role'] == 'assistant']) + 1}")
-        self._append_assistant(reply)
-
-        if self._verified:
-            return Action(kind="give_up"), reply.usage       # stop; the loop will see no further work
-        if not reply.tool_calls:
+        self.turns_used += 1
+        timeout = float(self.settings["model"].get("timeout_s", 120))
+        usage_total = dict(NO_USAGE)
+        reply = None
+        for nudge in range(MAX_NO_TOOL_NUDGES + 1):
+            n_assistant = len([m for m in self.messages if m["role"] == "assistant"])
+            reply = self.client.chat(self.messages, tools=self.specs, timeout_s=timeout,
+                                     purpose=f"turn_{n_assistant + 1}")
+            self._append_assistant(reply)
+            usage_total = _add_usage(usage_total, reply.usage)
+            if self._verified:
+                return Action(kind="give_up"), usage_total
+            if reply.tool_calls:
+                break
+            if nudge < MAX_NO_TOOL_NUDGES:
+                self.messages.append({"role": "user", "content": NO_TOOL_NUDGE})
+        else:
             self._gave_up = True
-            return Action(kind="give_up"), reply.usage
+            return Action(kind="give_up"), usage_total
 
         tc = reply.tool_calls[0]                             # one action per turn (first tool_call wins)
         for extra in reply.tool_calls[1:]:                   # satisfy the API's tool_call accounting
@@ -134,18 +157,30 @@ class Agent:
         self._awaiting = tc
         if tc.name == "submit_flag":
             return Action(kind="submit_flag", flag=_strip_candidate(args.get("flag")),
-                          tool_call_id=tc.id), reply.usage
-        return Action(kind="tool", tool=tc.name, arguments=args, tool_call_id=tc.id), reply.usage
+                          tool_call_id=tc.id), usage_total
+        return Action(kind="tool", tool=tc.name, arguments=args, tool_call_id=tc.id), usage_total
 
     def execute(self, action: Action, timeout_s: float) -> dict:
         assert self.runner is not None, "reset() must run before execute()"
         result = self.runner.execute(action.tool, action.arguments, timeout_s)
         self.messages.append({"role": "tool", "tool_call_id": action.tool_call_id,
-                              "content": json.dumps(result, ensure_ascii=False)})
+                              "content": json.dumps({**result, **self._pacing()}, ensure_ascii=False)})
         self._awaiting = None
         return result
 
     # ---------------------------------------------------------------- helpers
+
+    def _pacing(self) -> dict:
+        """Turns left, shown to the model so it can submit a best guess before the cap.
+
+        Informational only: the controller's AttemptBudget is what actually stops the loop.
+        """
+        left = max(0, self.max_turns - self.turns_used)
+        note = {"turns_remaining": left}
+        if left <= 2:
+            note["budget_note"] = ("Almost out of turns: if you have any plausible candidate, "
+                                   "call submit_flag now.")
+        return note
 
     def _append_assistant(self, reply: ModelReply) -> None:
         msg: dict[str, Any] = {"role": "assistant", "content": reply.content or ""}

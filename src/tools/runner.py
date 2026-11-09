@@ -13,6 +13,7 @@ from __future__ import annotations
 import shlex
 from typing import Optional
 
+from common.truncate import truncate
 from solver.sandbox import ExecResult, Sandbox, SandboxError
 from tools.specs import InvalidArguments, validate_arguments
 
@@ -53,10 +54,18 @@ class ToolRunner:
     # ------------------------------------------------------------------ tools
 
     def _wrap(self, res: ExecResult) -> dict:
+        """Tool payload with output capped to max_chars (head+tail) before anyone sees it.
+
+        The cap applies here so the model's context and the trace get the same bounded text;
+        payload["truncated"] carries the details for the controller to log.
+        """
         out = res.stdout or ""
         if res.stderr:
             out = (out + ("\n--- stderr ---\n" if out else "") + res.stderr) if res.stderr.strip() else out
+        out, info = truncate(out, self.max_chars)
         payload = {"status": res.status, "output": out, "exit_code": res.exit_code}
+        if info:
+            payload["truncated"] = info
         if res.status == "timeout":
             payload["error"] = "timed out"
         elif res.status == "error" and not res.stderr:
@@ -78,7 +87,7 @@ class ToolRunner:
             length = int(args.get("length", MAX_INSPECT_BYTES_DEFAULT))
             argv = ["xxd", "-s", str(offset), "-l", str(length), path]
         elif op == "binwalk":
-            argv = ["python3", "-m", "binwalk", path]
+            argv = ["binwalk", path]                 # Debian package CLI (signature scan only)
         else:
             return {"status": "error", "output": "", "error": f"inspect_file: unknown op {op!r}"}
         res = self.sandbox.exec(argv, timeout_s)

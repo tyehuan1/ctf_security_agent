@@ -7,7 +7,7 @@
     "$comment": "Exact id confirmed from GET https://litellm.oit.duke.edu/v1/models on 2026-11-08 (requires Duke network/VPN).",
     "name": "GPT 4.1 Mini",
     "base_url": "https://litellm.oit.duke.edu",
-    "temperature": 0,
+    "temperature": 0.6,
     "timeout_s": 120
   },
   "retry": {"attempts": 2, "backoff_s": 2},

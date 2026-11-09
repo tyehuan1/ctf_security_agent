@@ -3,7 +3,7 @@
 The tools are challenge-agnostic analysis utilities — no challenge-specific code:
   run_shell           : one shell command in the sandbox, stdout/stderr returned
   inspect_file        : file / strings / xxd / binwalk wrappers
-  python_exec         : short Python snippet (pycryptodome/requests/sympy/binwalk available)
+  python_exec         : short Python snippet (pwntools/pycryptodome/requests/sympy available)
   connect_endpoint    : one TCP exchange to the 'target' host on the private network
   submit_flag         : routes a candidate to the controller's verify_privately
 
@@ -53,7 +53,8 @@ TOOL_SPECS: list[dict] = [
         ["path", "op"]),
     _fn("python_exec",
         "Run a Python 3.11 snippet in the sandbox. Exits cleanly after stdout/stderr are captured. "
-        "Available libraries: pycryptodome, requests, sympy, binwalk, and the standard library. "
+        "Available libraries: pwntools (import pwn; pwn.remote('target', port)), pycryptodome, "
+        "requests, sympy, and the standard library. "
         "The snippet runs with /workspace as cwd.",
         {"code": {"type": "string", "minLength": 1, "maxLength": MAX_PYTHON_SRC,
                   "description": "Python source. Print what you want to see; return values are not captured."},

@@ -143,7 +143,14 @@ class Attempt:
     def request_next_action(self, observations: list) -> tuple[Action, dict]:
         limit = min(float(self.settings["model"]["timeout_s"]), self.budget.remaining_s)
         started = time.monotonic()
-        action, usage = call_with_deadline(self.solver.request_next_action, limit, observations)
+        try:
+            action, usage = call_with_deadline(self.solver.request_next_action, limit, observations)
+        except DeadlineExceeded as err:
+            # The cut-off call's tokens were never reported; token totals for this attempt are
+            # therefore a known subtotal. Recorded so the writeup can say so.
+            self.tracer("error", where="model_call", error=str(err), usage="unknown (call cut off by deadline)",
+                        latency_ms=int((time.monotonic() - started) * 1000))
+            raise
         usage = {**NO_USAGE, **(usage or {})}
         self.tracer("model_response", kind=action.kind, tool=action.tool, arguments=action.arguments,
                     usage=usage, latency_ms=int((time.monotonic() - started) * 1000))
@@ -169,6 +176,9 @@ class Attempt:
             _kill(self.solver, self.tracer, f"tool {action.tool} exceeded {timeout:.0f}s")
             raise ToolError(f"tool {action.tool} did not return within {timeout:.0f}s; solver killed")
         observation["latency_ms"] = int((time.monotonic() - started) * 1000)
+        if isinstance(observation.get("truncated"), dict):   # capped by the ToolRunner before the model saw it
+            self.tracer("truncation", where="tool_result.output", applied_by="tool_runner", **observation["truncated"])
+        # Backstop for any solver that does not cap; a no-op on already-capped text.
         for key in ("output", "error"):
             if isinstance(observation.get(key), str):
                 observation[key] = self.tracer.capture(observation[key], f"tool_result.{key}")

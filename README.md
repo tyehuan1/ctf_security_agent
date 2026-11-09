@@ -52,7 +52,7 @@ Record these with the results; do not change them between trials or challenges.
 | Agent commit | `git rev-parse HEAD` at launch (record in the writeup) |
 | Model ID | `GPT 4.1 Mini` (exact id from `GET /v1/models`, 2026-11-08) |
 | Route | Duke AI Gateway (LiteLLM, OpenAI-compatible) `https://litellm.oit.duke.edu/v1/chat/completions`, native tool calling, Duke VPN |
-| Settings | temperature 0, model request timeout 120 s (`config/settings.json`) |
+| Settings | temperature 0.6, model request timeout 120 s (`config/settings.json`) |
 | Retry rules | at most 2 HTTP attempts per model request, 2 s backoff, no retry on 400/401/403/404/422; an attempt is never re-run — a recorded trial slot is final |
 | Limits (controller-enforced) | max_turns 12, max_chars 6000 per captured output (head+tail), tool_timeout_s 45, attempt_deadline_s 600 (hard: runaway calls are cut off and the solver killed), attempt_token_cap 200000 |
 | Usage | input/output tokens from each response's `usage`; `cost_usd` from the gateway's `x-litellm-response-cost` header, else null |
