@@ -4,8 +4,8 @@
   "agent_version": "0.1.0",
   "model": {
     "provider": "Duke AI Gateway (LiteLLM, OpenAI-compatible)",
-    "$comment": "UNVERIFIED model id: confirm with list_gateway_models.py and one tool-call cycle before any live attempt.",
-    "name": "gpt-4.1-mini",
+    "$comment": "Exact id confirmed from GET https://litellm.oit.duke.edu/v1/models on 2026-11-08 (requires Duke network/VPN).",
+    "name": "GPT 4.1 Mini",
     "base_url": "https://litellm.oit.duke.edu",
     "temperature": 0,
     "timeout_s": 120
