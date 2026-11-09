@@ -15,6 +15,7 @@ reaches the sandbox.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -33,11 +34,20 @@ NO_TOOL_NUDGE = (
     "Do not reply with prose alone — call a tool now."
 )
 
-def _add_usage(a: dict, b: dict) -> dict:
-    out = dict(a)
+def _add_usage(total: Optional[dict], u: dict) -> dict:
+    """Sum usage across the gateway calls of one turn.
+
+    A counter is None (unknown) if any call left it unknown, matching AttemptBudget's rule that
+    unavailable counters stay null rather than being treated as 0.
+    """
+    if total is None:
+        return dict(u)
+    out = dict(total)
     for k in ("input_tokens", "output_tokens", "cost_usd"):
-        av, bv = a.get(k), b.get(k)
-        out[k] = None if (av is None and bv is None) else (av or 0) + (bv or 0)
+        a, b = total.get(k), u.get(k)
+        out[k] = None if a is None or b is None else a + b
+    out["attempts"] = (total.get("attempts") or 0) + (u.get("attempts") or 0)
+    out["usage_incomplete"] = bool(total.get("usage_incomplete") or u.get("usage_incomplete"))
     return out
 
 
@@ -126,26 +136,29 @@ class Agent:
             })
             self._awaiting = None
 
-        timeout = float(self.settings["model"].get("timeout_s", 120))
         self.turns_used += 1
-        timeout = float(self.settings["model"].get("timeout_s", 120))
-        usage_total = dict(NO_USAGE)
+        # One controller turn may take several gateway calls (nudges). They share one time budget
+        # so the whole request stays inside the controller's per-call deadline (model timeout_s).
+        budget_s = float(self.settings["model"].get("timeout_s", 120))
+        started = time.monotonic()
+        usage_total: Optional[dict] = None
         reply = None
         for nudge in range(MAX_NO_TOOL_NUDGES + 1):
+            left = budget_s - (time.monotonic() - started)
+            if left < 5:                                     # no time for another call this turn
+                break
             n_assistant = len([m for m in self.messages if m["role"] == "assistant"])
-            reply = self.client.chat(self.messages, tools=self.specs, timeout_s=timeout,
-                                     purpose=f"turn_{n_assistant + 1}")
+            reply = self.client.chat(self.messages, tools=self.specs, timeout_s=left,
+                                     purpose=f"turn_{self.turns_used}_call_{n_assistant + 1}")
             self._append_assistant(reply)
             usage_total = _add_usage(usage_total, reply.usage)
-            if self._verified:
-                return Action(kind="give_up"), usage_total
             if reply.tool_calls:
                 break
             if nudge < MAX_NO_TOOL_NUDGES:
                 self.messages.append({"role": "user", "content": NO_TOOL_NUDGE})
-        else:
-            self._gave_up = True
-            return Action(kind="give_up"), usage_total
+        usage = usage_total or dict(NO_USAGE)
+        if reply is None or not reply.tool_calls:
+            return Action(kind="give_up"), usage
 
         tc = reply.tool_calls[0]                             # one action per turn (first tool_call wins)
         for extra in reply.tool_calls[1:]:                   # satisfy the API's tool_call accounting
@@ -157,8 +170,8 @@ class Agent:
         self._awaiting = tc
         if tc.name == "submit_flag":
             return Action(kind="submit_flag", flag=_strip_candidate(args.get("flag")),
-                          tool_call_id=tc.id), usage_total
-        return Action(kind="tool", tool=tc.name, arguments=args, tool_call_id=tc.id), usage_total
+                          tool_call_id=tc.id), usage
+        return Action(kind="tool", tool=tc.name, arguments=args, tool_call_id=tc.id), usage
 
     def execute(self, action: Action, timeout_s: float) -> dict:
         assert self.runner is not None, "reset() must run before execute()"
