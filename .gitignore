@@ -231,3 +231,6 @@ runs/
 # Pilot (development) runs: kept out of git until the frozen full run
 results_pilot*.jsonl
 traces_pilot*/
+
+# Archived evaluation runs (kept out of git; config stays frozen at tag v1.0.0)
+Evaluation Set */

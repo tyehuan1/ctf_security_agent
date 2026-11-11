@@ -1,10 +1,10 @@
-cry-hybrid2
-rev-whataxor
-pwn-target-practice
-web-smug-dino
-for-1black0white
 pwn-get-it
-rev-beleaf
 cry-describeme
 rev-the-big-bang
 pwn-roppity
+pwn-slithery
+pwn-unlimited-subway
+web-shreeramquest
+msc-quantum-leap
+cry-perfect-secrecy
+for-whyos
