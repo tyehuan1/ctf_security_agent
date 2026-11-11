@@ -7,7 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_
 # Standard file/binary inspection utilities + a non-root user.
 # binwalk comes from Debian: the PyPI "binwalk" 2.1.0 package is incomplete (no binwalk.core).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        file binutils xxd coreutils procps net-tools binwalk \
+        file binutils xxd coreutils procps net-tools binwalk curl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m -u 1000 -s /bin/bash solver
 
