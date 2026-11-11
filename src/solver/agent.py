@@ -15,6 +15,7 @@ reaches the sandbox.
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,7 +25,7 @@ from solver.llm import GatewayClient, LLMError, ModelReply, ToolCall
 from solver.prompts import PROMPT_VERSION, SYSTEM_PROMPT
 from solver.sandbox import Sandbox
 from tools.runner import ToolRunner
-from tools.specs import tool_specs
+from tools.specs import reasoning_field, tool_specs
 from common.usage import NO_USAGE
 
 MAX_NO_TOOL_NUDGES = 2
@@ -66,6 +67,8 @@ class Action:
     arguments: dict = None
     flag: Optional[str] = None
     tool_call_id: Optional[str] = None
+    raw_flag: Optional[str] = None     # the model's submit_flag argument before extraction
+    content: str = ""                  # the model's text this turn (its stated hypothesis / reason)
 
     def __post_init__(self):
         if self.arguments is None:
@@ -81,6 +84,18 @@ def _strip_candidate(s) -> str:
     while len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'`":
         s = s[1:-1].strip()
     return s
+
+
+# A known flag prefix through the last closing brace after it (greedy, so a brace inside the
+# flag body is kept). Text before the prefix or after that brace is dropped.
+FLAG_FORMAT = re.compile(r"(?:flag|FLAG|csawctf)\{.*\}", re.DOTALL)
+
+
+def extract_candidate(raw) -> str:
+    """The flag-format substring of a submission if there is one, else the stripped submission."""
+    s = _strip_candidate(raw)
+    m = FLAG_FORMAT.search(s)
+    return m.group(0) if m else s
 
 
 class Agent:
@@ -115,19 +130,21 @@ class Agent:
                 f"Files        : {context.get('files') or '(none)'}\n"
                 f"Description  : {context.get('description') or '(none)'}\n"
                 f"Service      : {context.get('target') or '(no local service for this puzzle)'}\n\n"
-                "Begin with the observe step. Call tools; do not describe what you will do without "
-                "calling one. When you are confident, submit with submit_flag.\n"
+                "Begin with the observe step. Each reply states your hypothesis in one short sentence "
+                "and calls a tool; never reply with prose alone. When you are confident, submit with "
+                "submit_flag.\n"
                 f"(prompt_version={PROMPT_VERSION})"
             ),
         }
         self.messages = [{"role": "system", "content": SYSTEM_PROMPT}, user]
 
-    def kill(self) -> None:
-        if self.sandbox:
-            try:
-                self.sandbox.stop()
-            finally:
-                self.sandbox = None
+    def kill(self) -> dict:
+        if not self.sandbox:
+            return {"stopped": None, "note": "no sandbox running"}
+        try:
+            return self.sandbox.stop()
+        finally:
+            self.sandbox = None
 
     # ---------------------------------------------------------------- loop API
 
@@ -152,6 +169,7 @@ class Agent:
         started = time.monotonic()
         usage_total: Optional[dict] = None
         reply = None
+        texts: list[str] = []
         for nudge in range(MAX_NO_TOOL_NUDGES + 1):
             left = budget_s - (time.monotonic() - started)
             if left < 5:                                     # no time for another call this turn
@@ -164,14 +182,17 @@ class Agent:
                 err.waits = (usage_total or {}).get("rate_limit_waits", []) + err.waits
                 raise
             self._append_assistant(reply)
+            if reply.content:
+                texts.append(reply.content)
             usage_total = _add_usage(usage_total, reply.usage)
             if reply.tool_calls:
                 break
             if nudge < MAX_NO_TOOL_NUDGES:
                 self.messages.append({"role": "user", "content": NO_TOOL_NUDGE})
         usage = usage_total or dict(NO_USAGE)
+        content = "\n".join(texts)
         if reply is None or not reply.tool_calls:
-            return Action(kind="give_up"), usage
+            return Action(kind="give_up", content=content), usage
 
         tc = reply.tool_calls[0]                             # one action per turn (first tool_call wins)
         for extra in reply.tool_calls[1:]:                   # satisfy the API's tool_call accounting
@@ -179,12 +200,18 @@ class Agent:
                                   "content": json.dumps({"status": "skipped",
                                                          "note": "one tool call per turn; call again if needed"})})
 
-        args = tc.arguments if isinstance(tc.arguments, dict) else {}
+        args = dict(tc.arguments) if isinstance(tc.arguments, dict) else {}
+        # The required hypothesis/reason argument is the turn's stated reasoning; it is not a tool
+        # input. A missing one leaves content empty (visible in the trace) but does not block the call.
+        reasoning = args.pop(reasoning_field(tc.name), None)
+        if isinstance(reasoning, str) and reasoning.strip():
+            content = "\n".join([reasoning.strip(), *texts])
         self._awaiting = tc
         if tc.name == "submit_flag":
-            return Action(kind="submit_flag", flag=_strip_candidate(args.get("flag")),
-                          tool_call_id=tc.id), usage
-        return Action(kind="tool", tool=tc.name, arguments=args, tool_call_id=tc.id), usage
+            raw = args.get("flag")
+            return Action(kind="submit_flag", flag=extract_candidate(raw), raw_flag=raw,
+                          tool_call_id=tc.id, content=content), usage
+        return Action(kind="tool", tool=tc.name, arguments=args, tool_call_id=tc.id, content=content), usage
 
     def execute(self, action: Action, timeout_s: float) -> dict:
         assert self.runner is not None, "reset() must run before execute()"

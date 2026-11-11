@@ -68,6 +68,24 @@ class GatewayRateLimitTest(unittest.TestCase):
         self.assertIn("waits already spent", str(ctx.exception))
 
 
+class RequestTimeoutTest(unittest.TestCase):
+    def test_hung_request_is_cut_at_request_timeout_and_retried(self):
+        import requests as rq
+        replies = [rq.ReadTimeout("hung"), Resp(200, OK_BODY)]
+        timeouts = []
+
+        def post(*a, **k):
+            timeouts.append(k["timeout"])
+            r = replies.pop(0)
+            if isinstance(r, Exception):
+                raise r
+            return r
+        with mock.patch("solver.llm.requests.post", side_effect=post), mock.patch("solver.llm.time.sleep"):
+            reply = client().chat([{"role": "user", "content": "x"}], timeout_s=195)
+        self.assertEqual(timeouts[0], 60.0)                       # model.request_timeout_s, not 195
+        self.assertEqual((reply.usage["attempts"], reply.usage["usage_incomplete"]), (2, True))
+
+
 class PacingTest(unittest.TestCase):
     def test_waits_until_window_clears(self):
         windows = [Resp(200, headers={"x-ratelimit-remaining-tokens": "5000", "x-ratelimit-remaining-requests": "15"}),

@@ -33,6 +33,10 @@ class ScriptedSolver:
     def execute(self, action, timeout_s):
         return {"status": "ok", "output": "x" * 10000, "error": None}
 
+    def kill(self):
+        self.stopped = True
+        return {"stopped": True}
+
 
 @unittest.skipUnless(DATA, "external/CTFTiny not cloned")
 class RunnerOfflineTest(unittest.TestCase):
@@ -60,6 +64,21 @@ class RunnerOfflineTest(unittest.TestCase):
         self.assertEqual(rec["input_tokens"], 200)
         self.assertIsNone(rec["cost_usd"])
         self.assertEqual(trace[-1]["event"], "attempt_ended")
+
+    def test_normal_end_stops_solver_and_removes_network(self):
+        rec, solver, trace = self.run_with([], max_turns=1)
+        self.assertTrue(getattr(solver, "stopped", False))
+        events = [e["event"] for e in trace]
+        self.assertLess(events.index("solver_stopped"), events.index("target_stopped"))
+        stopped = next(e for e in trace if e["event"] == "target_stopped")
+        self.assertTrue(stopped["network_removed"] and stopped["clean"])
+
+    def test_model_text_is_in_the_main_trace(self):
+        act = Action("tool", "noop", {})
+        act.content = "Hypothesis: the flag is in a string constant."
+        rec, solver, trace = self.run_with([act], max_turns=1)
+        responses = [e for e in trace if e["event"] == "model_response"]
+        self.assertEqual(responses[0]["content"], "Hypothesis: the flag is in a string constant.")
 
     def test_turn_cap_terminates_and_output_is_capped(self):
         rec, solver, trace = self.run_with([], max_turns=3, max_chars=500)

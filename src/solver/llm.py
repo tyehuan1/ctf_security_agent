@@ -89,6 +89,7 @@ class GatewayClient:
         max_429 = int(rl.get("max_429_retries", 3))
         default_wait = float(rl.get("default_wait_s", 65))
         pricing = self.model.get("pricing")
+        request_timeout = float(self.model.get("request_timeout_s", budget))
         headers = {"Authorization": f"Bearer {self._token()}"}
         last_err = None
         started = time.monotonic()
@@ -108,7 +109,9 @@ class GatewayClient:
                 break
             tries += 1
             try:
-                r = requests.post(self.url, headers=headers, json=body, timeout=remaining)
+                # One hung request may not use up the whole turn: cap each HTTP request so a retry
+                # still fits inside the turn's budget.
+                r = requests.post(self.url, headers=headers, json=body, timeout=min(remaining, request_timeout))
                 if r.status_code < 400:
                     data = r.json()
                     latency = int((time.monotonic() - started) * 1000)

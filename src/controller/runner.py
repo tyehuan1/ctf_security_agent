@@ -156,8 +156,12 @@ class Attempt:
             raise
         usage = {**NO_USAGE, **(usage or {})}
         self._trace_rate_limit_waits(usage.pop("rate_limit_waits", None))
+        extra = {}
+        if action.is_flag_submission and getattr(action, "raw_flag", None) not in (None, action.flag):
+            extra["raw_flag"] = self.tracer.capture(str(action.raw_flag), "model_response.raw_flag")
         self.tracer("model_response", kind=action.kind, tool=action.tool, arguments=action.arguments,
-                    usage=usage, latency_ms=int((time.monotonic() - started) * 1000))
+                    content=self.tracer.capture(getattr(action, "content", "") or "", "model_response.content"),
+                    **extra, usage=usage, latency_ms=int((time.monotonic() - started) * 1000))
         return action, usage
 
     def _trace_rate_limit_waits(self, waits) -> None:
@@ -199,6 +203,13 @@ class Attempt:
     def stop_solver_and_record_terminal_status(self, status: str, reason: str) -> str:
         if status == "timeout":   # a timed-out call may still be running; stop its environment
             _kill(self.solver, self.tracer, "attempt deadline reached")
+        else:                     # every attempt ends by stopping the solver sandbox, then the target
+            stop = getattr(self.solver, "kill", None)
+            if callable(stop):
+                try:
+                    self.tracer("solver_stopped", **(stop() or {}))
+                except Exception as err:
+                    self.tracer("error", where="solver.kill", error=f"{type(err).__name__}: {err}")
         try:
             self.tracer("target_stopped", **self.target.stop())
         except TargetError as err:

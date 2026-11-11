@@ -227,3 +227,7 @@ __pycache__/
 # CTF benchmark project
 external/
 runs/
+
+# Pilot (development) runs: kept out of git until the frozen full run
+results_pilot*.jsonl
+traces_pilot*/

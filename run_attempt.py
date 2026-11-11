@@ -1,9 +1,10 @@
 """Run one attempt on one challenge: produces one results.jsonl line and one trace.
 
-    python run_attempt.py CHALLENGE_ID TRIAL [--dev] [--results path] [--traces path] [--runs path]
+    python run_attempt.py CHALLENGE_ID TRIAL [--dev] [--pilot] [--results path] [--traces path] [--runs path]
 
 --dev reads from external/NYU_CTF_Bench/development_dataset.json (for smoke tests on development
 challenges only; never the 10 scored keys). Without --dev the CTFTiny evaluation index is used.
+--pilot refuses the 10 scored keys on either dataset (e.g. CTFTiny rev-checker as a pilot baseline).
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("challenge_id")
     ap.add_argument("trial", type=int, choices=(1, 2, 3))
     ap.add_argument("--dev", action="store_true", help="use development_dataset.json")
+    ap.add_argument("--pilot", action="store_true", help="verification run: refuse the scored keys")
     ap.add_argument("--results", type=Path, default=None)
     ap.add_argument("--traces", type=Path, default=None)
     ap.add_argument("--runs", type=Path, default=None)
@@ -41,6 +43,8 @@ def main(argv: list[str] | None = None) -> int:
         settings["data"]["dataset_json"] = settings["data"]["dev_dataset_json"]
         if a.challenge_id in SCORED:
             raise SystemExit(f"--dev is for development challenges only; {a.challenge_id!r} is a scored key")
+    if a.pilot and a.challenge_id in SCORED:
+        raise SystemExit(f"--pilot never runs a scored key; {a.challenge_id!r} is in evaluation_ids.txt")
     ds = loader.load_dataset(settings)
     if a.challenge_id not in ds.dataset:
         raise SystemExit(f"challenge_id {a.challenge_id!r} not in {settings['data']['dataset_json']}")

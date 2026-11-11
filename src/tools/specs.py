@@ -93,9 +93,31 @@ class InvalidArguments(ValueError):
     """Arguments do not match the tool contract. Returned to the model as status=error."""
 
 
+# Reasoning the model must state with every call. Added only to the specs the model sees; the
+# agent removes it before the call is validated against TOOL_SPECS and executed, so tools behave
+# the same with or without it, and it is recorded as the turn's model_response.content.
+REASONING_FIELDS = {
+    "submit_flag": ("reason", "One short sentence: why you believe this exact string is the flag."),
+}
+DEFAULT_REASONING = ("hypothesis", "One short sentence: your current hypothesis and why this action tests it.")
+
+
+def reasoning_field(name: str) -> str:
+    return REASONING_FIELDS.get(name, DEFAULT_REASONING)[0]
+
+
 def tool_specs() -> list[dict]:
-    """Function specs to send to the gateway."""
-    return [dict(s, function=dict(s["function"])) for s in TOOL_SPECS]
+    """Function specs to send to the gateway: TOOL_SPECS plus a required reasoning field."""
+    out = []
+    for s in TOOL_SPECS:
+        fn = s["function"]
+        field, desc = REASONING_FIELDS.get(fn["name"], DEFAULT_REASONING)
+        params = dict(fn["parameters"])
+        params["properties"] = {field: {"type": "string", "minLength": 1, "maxLength": 500,
+                                        "description": desc}, **params["properties"]}
+        params["required"] = [field, *params["required"]]
+        out.append(dict(s, function=dict(fn, parameters=params)))
+    return out
 
 
 def validate_arguments(name: str, args) -> dict:

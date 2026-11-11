@@ -116,8 +116,9 @@ class Sandbox:
             return report
         res = _run(["docker", "stop", "-t", "3", self.container_id], 30)
         report["stopped"] = res.returncode == 0
-        leftover = _run(["docker", "ps", "-q", "--filter", f"id={self.container_id}"], 15).stdout.strip()
+        leftover = _run(["docker", "ps", "-aq", "--filter", f"id={self.container_id}"], 15).stdout.strip()
         if leftover:
             _run(["docker", "rm", "-f", "-v", self.container_id], 30)
             report["forced"] = True
+        report["gone"] = not _run(["docker", "ps", "-aq", "--filter", f"id={self.container_id}"], 15).stdout.strip()
         return report

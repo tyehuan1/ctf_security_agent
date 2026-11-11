@@ -1,0 +1,7 @@
+# Pilot (verification) challenges: never the 10 scored keys in evaluation_ids.txt.
+# <dataset> <challenge_id>    dataset: dev = NYU_CTF_Bench development_dataset.json, ctftiny = CTFTiny index
+ctftiny rev-checker
+dev 2016q-rev-rock
+dev 2016q-pwn-warmup
+dev 2015q-cry-bricks_of_gold
+dev 2016q-web-mfw

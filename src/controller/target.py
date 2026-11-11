@@ -140,28 +140,31 @@ class Target:
         res = _run(["docker", "ps", "-aq", "--filter", f"label=com.docker.compose.project={self.project}"], 30)
         return res.stdout.split()
 
+    def _network_exists(self) -> bool:
+        return bool(_run(["docker", "network", "ls", "-q", "--filter", f"name=^{self.network}$"], 30).stdout.split())
+
     def stop(self) -> dict:
         """Tear down and verify nothing from this attempt remains."""
         report = {"project": self.project, "down_rc": None, "forced_containers": [], "network_removed": None}
-        if not self.has_service:
-            return report
-        if self.compose_file.exists():
-            try:
-                report["down_rc"] = self._compose("down", "--volumes", "--remove-orphans",
-                                                  "--timeout", str(self.stop_timeout)).returncode
-            except TargetError as err:
-                report["down_error"] = str(err)
-        leftovers = self.container_ids()
-        if leftovers:
-            _run(["docker", "rm", "-f", "-v", *leftovers], 60)
-            report["forced_containers"] = leftovers
-        net = _run(["docker", "network", "ls", "-q", "--filter", f"name=^{self.network}$"], 30).stdout.split()
-        if net:
+        if self.has_service:
+            if self.compose_file.exists():
+                try:
+                    report["down_rc"] = self._compose("down", "--volumes", "--remove-orphans",
+                                                      "--timeout", str(self.stop_timeout)).returncode
+                except TargetError as err:
+                    report["down_error"] = str(err)
+            leftovers = self.container_ids()
+            if leftovers:
+                _run(["docker", "rm", "-f", "-v", *leftovers], 60)
+                report["forced_containers"] = leftovers
+        # The per-attempt network exists for file-only challenges too (ensure_network); the solver
+        # sandbox must already be stopped, or Docker refuses to remove a network with endpoints.
+        if self._network_exists():
             _run(["docker", "network", "rm", self.network], 30)
-        report["network_removed"] = True
-        report["clean"] = not self.container_ids()
+        report["network_removed"] = not self._network_exists()
+        report["clean"] = not self.container_ids() and report["network_removed"]
         if not report["clean"]:
-            raise TargetError(f"containers survived teardown for {self.project}")
+            raise TargetError(f"containers or network {self.network} survived teardown for {self.project}")
         return report
 
     def inspect_isolation(self) -> dict:

@@ -26,6 +26,7 @@ NULLABLE_COUNTERS = ("input_tokens", "output_tokens", "cost_usd")
 TRACE_EVENTS = frozenset({
     "attempt_started",      # config snapshot, budget, reset_id, export inventory
     "target_started", "target_stopped", "isolation_check",
+    "solver_stopped",       # solver sandbox stop report at the end of every attempt
     "model_request",        # model-visible messages
     "model_response",       # content, tool proposals, usage, latency
     "tool_proposal",        # tool name + arguments as proposed

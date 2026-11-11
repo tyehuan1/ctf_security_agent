@@ -6,7 +6,7 @@ import unittest
 import tests  # noqa: F401
 from common import config
 from controller.verifier import Verification
-from solver.agent import KEEP_TOOL_RESULTS, MAX_NO_TOOL_NUDGES, Agent, _add_usage
+from solver.agent import KEEP_TOOL_RESULTS, MAX_NO_TOOL_NUDGES, Agent, _add_usage, extract_candidate
 from solver.llm import ModelReply, ToolCall
 
 
@@ -75,6 +75,69 @@ class AgentLoopTest(unittest.TestCase):
         tool_msgs = [m for m in a.messages if m["role"] == "tool"]
         self.assertEqual(tool_msgs[0]["tool_call_id"], "s1")
         self.assertEqual(json.loads(tool_msgs[0]["content"])["verified"], False)
+
+
+    def test_reasoning_text_is_carried_on_the_action(self):
+        reply = ModelReply(content="The ELF may embed the flag; strings should show it.",
+                           tool_calls=[ToolCall("c1", "inspect_file", {"path": "/workspace/x", "op": "strings"})],
+                           usage=usage())
+        action, _ = agent_with([reply]).request_next_action([{}])
+        self.assertEqual(action.content, "The ELF may embed the flag; strings should show it.")
+
+    def test_submission_is_reduced_to_the_flag_format_substring(self):
+        a = agent_with([call("submit_flag", {"flag": "The flag is flag{abc} (from strings)."}, cid="s1")])
+        action, _ = a.request_next_action([{}])
+        self.assertEqual((action.flag, action.raw_flag), ("flag{abc}", "The flag is flag{abc} (from strings)."))
+
+
+class ReasoningFieldTest(unittest.TestCase):
+    def test_model_facing_specs_require_reasoning(self):
+        from tools.specs import TOOL_SPECS, tool_specs
+        for spec in tool_specs():
+            fn = spec["function"]
+            field = "reason" if fn["name"] == "submit_flag" else "hypothesis"
+            self.assertEqual(fn["parameters"]["required"][0], field, fn["name"])
+        self.assertNotIn("hypothesis", json.dumps(TOOL_SPECS))     # execution schema unchanged
+
+    def test_hypothesis_is_stripped_and_recorded(self):
+        a = agent_with([call("run_shell", {"hypothesis": "The flag is a plain string.", "command": "ls"})])
+        action, _ = a.request_next_action([{}])
+        self.assertEqual(action.arguments, {"command": "ls"})
+        self.assertEqual(action.content, "The flag is a plain string.")
+        sent = a.messages[-1]["tool_calls"][0]["function"]["arguments"]
+        self.assertIn("hypothesis", sent)                          # the model's own history keeps it
+
+    def test_reason_is_stripped_from_submission(self):
+        a = agent_with([call("submit_flag", {"reason": "strings showed it verbatim.", "flag": "flag{q}"})])
+        action, _ = a.request_next_action([{}])
+        self.assertEqual((action.flag, action.content), ("flag{q}", "strings showed it verbatim."))
+
+    def test_missing_reasoning_does_not_block_the_call(self):
+        a = agent_with([call("run_shell", {"command": "ls"})])
+        action, _ = a.request_next_action([{}])
+        self.assertEqual((action.tool, action.arguments, action.content), ("run_shell", {"command": "ls"}, ""))
+
+
+class PromptVersionTest(unittest.TestCase):
+    def test_prompt_version_matches_agent_version(self):
+        from solver.prompts import PROMPT_VERSION
+        self.assertEqual(PROMPT_VERSION, f"ctf-solver-{config.load_settings()['agent_version']}")
+
+
+class ExtractCandidateTest(unittest.TestCase):
+    def test_cases(self):
+        cases = {
+            "flag{abc}": "flag{abc}",
+            "flag{abc}xyz": "flag{abc}",
+            "  `FLAG{A_b}` ": "FLAG{A_b}",
+            "answer: csawctf{x1}.": "csawctf{x1}",
+            "flag{a{b}c}": "flag{a{b}c}",          # inner braces kept
+            "IoDJuvwxy": "IoDJuvwxy",              # no flag format -> unchanged
+            "flag{unterminated": "flag{unterminated",
+        }
+        for raw, want in cases.items():
+            with self.subTest(raw=raw):
+                self.assertEqual(extract_candidate(raw), want)
 
 
 class FakeRunner:
