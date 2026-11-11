@@ -48,7 +48,7 @@ Record these with the results; do not change them between trials or challenges.
 | Item | Value |
 |---|---|
 | Agent version | `1.0.0` (`agent_version` in `config/settings.json`); see the change log |
-| Agent commit | tag `v1.0.0` (hash recorded below) |
+| Agent commit | `b57394d3a0c57808b918b660478d4e3df0fd986e` (tag `v1.0.0`) |
 | Model ID | `claude-haiku-5-5` (exact id from `GET /v1/models`); chosen at freeze after pilot 8 (haiku solved 4/5 development challenges vs 1/5 for GPT 4.1 Mini under the same prompt) |
 | Route | Duke AI Gateway (LiteLLM, OpenAI-compatible) `https://litellm.oit.duke.edu/v1/chat/completions`, native tool calling, Duke VPN |
 | Settings | temperature 0.6, per-turn model time budget 200 s incl. retries and 429 waits; each HTTP request cut off at 60 s (`request_timeout_s`) so a hung request leaves time for a retry (`config/settings.json`) |
