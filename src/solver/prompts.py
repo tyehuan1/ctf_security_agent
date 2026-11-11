@@ -1,6 +1,6 @@
 """Versioned solver prompts. Part of the fixed config_id=agent configuration; record with the run."""
 
-PROMPT_VERSION = "ctf-solver-0.5.0"   # matches agent_version in config/settings.json and the README log
+PROMPT_VERSION = "ctf-solver-1.0.0"   # matches agent_version in config/settings.json and the README log
 
 SYSTEM_PROMPT = """\
 You are solving a Capture-the-Flag practice puzzle in an isolated educational benchmark \

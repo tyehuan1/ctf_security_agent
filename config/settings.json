@@ -1,20 +1,20 @@
 {
   "$comment": "Non-secret run configuration for the single fixed configuration (config_id=agent). Secrets live in .env.",
   "config_id": "agent",
-  "agent_version": "0.5.0",
+  "agent_version": "1.0.0",
   "model": {
     "provider": "Duke AI Gateway (LiteLLM, OpenAI-compatible)",
-    "$comment": "Exact id confirmed from GET https://litellm.oit.duke.edu/v1/models on 2026-11-08 (requires Duke network/VPN).",
-    "name": "GPT 4.1 Mini",
+    "$comment": "Exact id from GET https://litellm.oit.duke.edu/v1/models (requires Duke network/VPN). Frozen at v1.0.0 after pilot 8: claude-haiku-5-5 solved 4/5 development challenges vs 1/5 for GPT 4.1 Mini under the same prompt.",
+    "name": "claude-haiku-5-5",
     "base_url": "https://litellm.oit.duke.edu",
     "temperature": 0.6,
     "timeout_s": 200,
     "request_timeout_s": 60,
     "pricing": {
-      "$comment": "USD per 1M tokens, used only when the x-litellm-response-cost header is missing. Matches GPT-4.1 mini list pricing; verified 2026-11-09 against gateway header costs (108 uncached + 16384 cached in, 23 out -> $0.0017184).",
-      "input_per_m": 0.40,
-      "cached_input_per_m": 0.10,
-      "output_per_m": 1.60
+      "$comment": "USD per 1M tokens, used only when the x-litellm-response-cost header is missing. claude-haiku-5-5 rates from GET /v1/model/info on 2026-11-10 (in 0.10 / cached 0.01 / out 0.50).",
+      "input_per_m": 0.10,
+      "cached_input_per_m": 0.01,
+      "output_per_m": 0.50
     }
   },
   "retry": {"attempts": 2, "backoff_s": 2},
@@ -29,12 +29,12 @@
     "window_max_wait_s": 300
   },
   "budget": {
-    "$comment": "Pilot values. Enforced by the controller; model output cannot change them.",
-    "max_turns": 12,
+    "$comment": "Frozen at v1.0.0. Enforced by the controller; model output cannot change them.",
+    "max_turns": 25,
     "max_chars": 3000,
     "tool_timeout_s": 45,
     "attempt_deadline_s": 600,
-    "attempt_token_cap": 200000
+    "attempt_token_cap": 400000
   },
   "data": {
     "dataset_json": "external/CTFTiny/ctftiny.json",
