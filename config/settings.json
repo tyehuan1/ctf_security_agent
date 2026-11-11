@@ -1,7 +1,7 @@
 {
   "$comment": "Non-secret run configuration for the single fixed configuration (config_id=agent). Secrets live in .env.",
   "config_id": "agent",
-  "agent_version": "0.3.0",
+  "agent_version": "0.4.0",
   "model": {
     "provider": "Duke AI Gateway (LiteLLM, OpenAI-compatible)",
     "$comment": "Exact id confirmed from GET https://litellm.oit.duke.edu/v1/models on 2026-11-08 (requires Duke network/VPN).",
