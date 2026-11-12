@@ -10,6 +10,13 @@ CTFTiny        https://github.com/NYU-LLM-CTF/CTFTiny.git
 
 Loader         nyuctf==1.1.1 (PyPI)
 
+Sandbox images (built from sandbox/; recorded with `docker image inspect --format {{.Id}}`)
+  ctf-solver-sandbox:v1    sha256:a5fc9d1e674cb3ff7084e0141325fdd9414869823eadc7e8c5f8f20020511d58
+                           sandbox/Dockerfile      — baseline + selected (v1.0.0) + baseline-prompt arms
+  ctf-solver-sandbox:v1.1  sha256:beb66bc273a906d6c650819069b6c9a8ec5c8db6efeed624dfb90fd8aa4a0413
+                           sandbox/Dockerfile.imaging — imaging+OCR arm (v1.1.0): v1 + Pillow, numpy,
+                           pytesseract (tesseract 5.5.0), pyzbar (libzbar0)
+
 Windows checkout notes (content is unchanged; only on-disk layout differs)
   - Repo-local git config: core.protectNTFS=false, core.autocrlf=false, core.eol=lf, core.longpaths=true
     (autocrlf=false keeps LF endings in run.sh / Dockerfiles used by Linux containers).

@@ -138,7 +138,7 @@ class Agent:
                 f"(prompt_version={prompt_version(self.settings['agent_version'])})"
             ),
         }
-        system_prompt = build_system_prompt(bool(sandbox_cfg.get("imaging", True)))
+        system_prompt = build_system_prompt(sandbox_cfg.get("prompt", "frozen"))
         self.messages = [{"role": "system", "content": system_prompt}, user]
 
     def kill(self) -> dict:

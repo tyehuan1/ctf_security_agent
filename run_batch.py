@@ -108,11 +108,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--manifest", type=Path, default=ROOT / "evaluation_manifest.json")
     ap.add_argument("--plan", action="store_true", help="print the remaining slots and exit")
     ap.add_argument("--max-attempts", type=int, default=None, help="cap attempts run by this invocation")
+    ap.add_argument("--prompt", choices=sorted(config.ARMS), default=None,
+                    help="configuration arm to run (sets CTF_ARM): baseline | 1.0.0 (selected) | 1.1.0")
+    ap.add_argument("--results", type=Path, default=None, help="override results path (use for non-selected arms)")
+    ap.add_argument("--traces", type=Path, default=None, help="override traces dir (use for non-selected arms)")
     a = ap.parse_args(argv)
 
+    if a.prompt:
+        os.environ["CTF_ARM"] = a.prompt           # select the arm before settings resolve it
     settings = config.load_settings()
-    results_path = config.path(settings["paths"]["results"])
-    traces_dir = config.path(settings["paths"]["traces_dir"])
+    arm = settings["agent_version"]
+    label = None if arm == "1.0.0" else f"arm-{arm}"   # tag run_ids of non-selected arms
+    results_path = Path(a.results) if a.results else config.path(settings["paths"]["results"])
+    traces_dir = Path(a.traces) if a.traces else config.path(settings["paths"]["traces_dir"])
     manifest = json.loads(a.manifest.read_text(encoding="utf-8"))
     n = len(manifest["challenges"])
 
@@ -134,7 +142,8 @@ def main(argv: list[str] | None = None) -> int:
         last_tokens = None
         for cid, trial in todo:                       # sequential by design: never parallel attempts
             wait_for_rate_window(settings, last_tokens)
-            rec = run_attempt(cid, trial, make_solver, settings=settings)
+            rec = run_attempt(cid, trial, make_solver, settings=settings,
+                              results_path=results_path, traces_dir=traces_dir, label=label)
             last_tokens = (rec["input_tokens"] or 0) + (rec["output_tokens"] or 0) or None
             print(f"{cid} t{trial}: {rec['status']} verified={rec['verified']} {rec['elapsed_s']}s "
                   f"in={rec['input_tokens']} out={rec['output_tokens']} cost={rec['cost_usd']}")

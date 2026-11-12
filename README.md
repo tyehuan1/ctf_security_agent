@@ -45,14 +45,15 @@ Readiness and offline tests:
 
 Record these with the results; do not change them between trials or challenges.
 
-> **Baseline vs. improvement arms.** The table below is the **frozen baseline, `v1.0.0`** (git tag
-> `v1.0.0`, sandbox image `ctf-solver-sandbox:v1`): the configuration that produced the scored
-> `results.jsonl`. `git checkout v1.0.0` reproduces this column exactly. The current working tree
-> carries a post-freeze **improvement arm, `v1.1.0`** (`agent_version 1.1.0` in
-> `config/settings.json`, image `ctf-solver-sandbox:v1.1`), described under
-> [Improvement arms](#improvement-arms-post-freeze); the baseline image and its scored results are
-> left untouched. Each arm is one fixed `config_id = "agent"` configuration; only one is active at a
-> time (whatever the working tree / checked-out tag points to).
+> **This table is the selected configuration, `v1.0.0`** — the default (`agent_version 1.0.0` in
+> `config/settings.json`) and the configuration that produced the scored `results.jsonl`. Two other
+> arms select from the same tree with the `--prompt` launch flag (or the `CTF_ARM` env var):
+> **`baseline`** — the pre-improvement prompt (no reasoning / run-and-interact lines), for
+> comparison; and **`1.1.0`** — the post-freeze imaging+OCR arm
+> ([Improvement arms](#improvement-arms-post-freeze)). Each arm is one fixed `config_id = "agent"`
+> configuration differing only in the prompt variant and sandbox image; selecting an arm never
+> changes any arm's frozen behavior. Exact launch commands:
+> [Configurations & launch commands](#configurations--launch-commands).
 
 | Item | Value |
 |---|---|
@@ -74,11 +75,12 @@ Record these with the results; do not change them between trials or challenges.
 
 ## Improvement arms (post-freeze)
 
-Each arm is a self-contained `config_id = "agent"` configuration built on the frozen baseline. It
-gets its own `agent_version`, `PROMPT_VERSION = ctf-solver-<agent_version>`, and sandbox image tag,
-so a trace's `attempt_started` (which embeds the full settings and `agent_version`) is enough to
-tell which arm produced any result. The baseline (`v1.0.0`, image `ctf-solver-sandbox:v1`,
-id `sha256:a5fc9d1e67…`) is never rebuilt in place.
+Each arm is a self-contained `config_id = "agent"` configuration selected with `--prompt` / `CTF_ARM`
+(see [Configurations & launch commands](#configurations--launch-commands)). It gets its own
+`agent_version`, `PROMPT_VERSION = ctf-solver-<agent_version>`, and sandbox image, so a trace's
+`attempt_started` (which embeds the full settings and `agent_version`) is enough to tell which arm
+produced any result. The selected configuration (`v1.0.0`, image `ctf-solver-sandbox:v1`,
+id `sha256:a5fc9d1e67…`) is the default and is never rebuilt in place.
 
 | Arm | Delta from baseline | Sandbox image |
 |---|---|---|
@@ -102,11 +104,12 @@ of git and never mixed into `results.jsonl`.
 $c = git -C external/CTFTiny rev-parse HEAD
 .venv\Scripts\python.exe make_manifest.py --dataset external/CTFTiny/ctftiny.json --ids-file evaluation_ids.txt --split evaluation --source-commit $c --out evaluation_manifest.json
 
-# 2. the selected configuration: 3 x N attempts, resumable (once the solver is built)
+# 2. the SELECTED configuration (v1.0.0): 3 x N attempts, resumable (once the solver is built)
+#    (default arm; equivalent to  --prompt 1.0.0 ; writes the scored results.jsonl)
 .venv\Scripts\python.exe run_batch.py --manifest evaluation_manifest.json --plan
 .venv\Scripts\python.exe run_batch.py --manifest evaluation_manifest.json
 
-# 3. A6 metrics
+# 3. A6 metrics -> summary.json + per_challenge.csv
 .venv\Scripts\python.exe ctf_single_agent_summary.py --manifest evaluation_manifest.json --results results.jsonl --config agent --out summary.json --csv per_challenge.csv
 ```
 
@@ -115,34 +118,44 @@ as `infrastructure_error` instead of retrying it, and holds a lock so two batche
 `--allow-synthetic` on the summarizer is for offline examples only; synthetic fixtures are never
 measured results and must not be submitted.
 
-### Selecting a configuration arm
+### Configurations & launch commands
 
-`CTF_ARM` picks the arm for a launch (unset = `config/settings.json`'s `agent_version`, currently
-`1.1.0`). It sets the sandbox image and whether the prompt carries the imaging/OCR guidance, and is
-recorded in each trace's `attempt_started` (`agent_version`, `code.commit`, and `settings.sandbox`),
-so a result self-identifies its arm. Write each arm to its own labeled files so arms never mix:
+Three configurations select from one tree. The arm is chosen by the `--prompt` launch flag on
+`run_batch.py` / `run_attempt.py` (or the `CTF_ARM` env var; unset = the `config/settings.json`
+`agent_version`, i.e. the selected `1.0.0`). Each differs only in the **prompt variant** and the
+**sandbox image**; model, budgets (`max_turns 25`, `attempt_token_cap 400000`), tools and isolation
+are identical. The arm is recorded in every trace's `attempt_started` (`agent_version`, `code.commit`,
+`settings.sandbox`), so each result self-identifies.
+
+| `--prompt` | Prompt variant | Model | Sandbox image | Role |
+|---|---|---|---|---|
+| `baseline` | pre-improvement — **no** reasoning / run-and-interact lines (git `ctf-solver-v2`) | `claude-haiku-5-5` | `ctf-solver-sandbox:v1` | comparison baseline |
+| `1.0.0` *(default)* | improved — reasoning + run-and-interact | `claude-haiku-5-5` | `ctf-solver-sandbox:v1` | **selected (frozen), tag `v1.0.0`, commit `b57394d`** |
+| `1.1.0` | improved + imaging/OCR guidance | `claude-haiku-5-5` | `ctf-solver-sandbox:v1.1` | post-freeze imaging+OCR arm |
+
+Non-selected arms write to their own labeled files so they never collide with the scored
+`results.jsonl` (`config_id` is always `"agent"`, so the trial slots would otherwise clash):
 
 ```powershell
-# Baseline v1.0.0 (image ctf-solver-sandbox:v1, no imaging prompt)
-$env:CTF_ARM='1.0.0'
-.venv\Scripts\python.exe run_attempt.py cry-perfect-secrecy 1 --results results.v1.0.0.jsonl --traces traces.v1.0.0 --label arm-v1.0.0
+# SELECTED configuration — v1.0.0 (frozen; the scored run):
+.venv\Scripts\python.exe run_batch.py --manifest evaluation_manifest.json
+.venv\Scripts\python.exe ctf_single_agent_summary.py --manifest evaluation_manifest.json --results results.jsonl --config agent --out summary.json --csv per_challenge.csv
 
-# Imaging + OCR arm v1.1.0 (image ctf-solver-sandbox:v1.1, imaging prompt)
-$env:CTF_ARM='1.1.0'
-.venv\Scripts\python.exe run_attempt.py cry-perfect-secrecy 1 --results results.v1.1.0.jsonl --traces traces.v1.1.0 --label arm-v1.1.0
+# BASELINE configuration — pre-improvement prompt:
+.venv\Scripts\python.exe run_batch.py --manifest evaluation_manifest.json --prompt baseline --results results.baseline.jsonl --traces traces.baseline
+.venv\Scripts\python.exe ctf_single_agent_summary.py --manifest evaluation_manifest.json --results results.baseline.jsonl --config agent --out summary.baseline.json --csv per_challenge.baseline.csv
 
-Remove-Item Env:CTF_ARM   # back to the settings.json default
+# IMAGING + OCR arm — v1.1.0:
+.venv\Scripts\python.exe run_batch.py --manifest evaluation_manifest.json --prompt 1.1.0 --results results.v1.1.0.jsonl --traces traces.v1.1.0
+.venv\Scripts\python.exe ctf_single_agent_summary.py --manifest evaluation_manifest.json --results results.v1.1.0.jsonl --config agent --out summary.v1.1.0.json --csv per_challenge.v1.1.0.csv
 ```
 
-`--label` tags the `run_id` and trace filename (`agent-arm-v1-1-0-cry-perfect-secrecy-t1-…`).
-Summarize an arm by pointing the summarizer at that arm's results/traces:
-`ctf_single_agent_summary.py … --results results.v1.1.0.jsonl --csv per_challenge.v1.1.0.csv`.
-(The baseline arm, byte-for-byte, is also reproducible with `git checkout v1.0.0`.)
-
-The first measured arm run — `cry-perfect-secrecy` ×3 under `v1.1.0`
-(`results.v1.1.0.jsonl` / `traces.v1.1.0/` / `per_challenge.v1.1.0.csv`) — solved **3/3**, where the
-frozen `v1.0.0` baseline was **0/3** (`budget_exhausted`): the imaging+OCR capability let the solver
-read the flag drawn in the XOR-recovered image instead of exhausting its turns on ASCII art.
+`run_attempt.py <challenge> <trial> --prompt <arm> [--results … --traces … --label …]` runs a single
+attempt the same way. `git checkout v1.0.0` reproduces the selected configuration byte-for-byte as an
+independent check. The first measured arm comparison — `cry-perfect-secrecy` ×3,
+`results.v1.1.0.jsonl` vs the selected baseline in `results.jsonl` — was **3/3 solved under `1.1.0`**
+vs **0/3 (`budget_exhausted`) under `1.0.0`**: the imaging+OCR capability let the solver read the flag
+drawn in the XOR-recovered image instead of exhausting its turns on ASCII art.
 
 ## Layout
 

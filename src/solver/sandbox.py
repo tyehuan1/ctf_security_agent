@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-DEFAULT_IMAGE = "ctf-solver-sandbox:v1.1"   # imaging+OCR arm (agent_version 1.1.0); baseline was :v1
+DEFAULT_IMAGE = "ctf-solver-sandbox:v1"   # fallback only; the active arm's image comes from settings
 
 
 class SandboxError(RuntimeError):

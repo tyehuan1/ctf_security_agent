@@ -10,6 +10,7 @@ challenges only; never the 10 scored keys). Without --dev the CTFTiny evaluation
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -38,8 +39,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-wait", action="store_true", help="skip the pre-attempt rate-limit window check")
     ap.add_argument("--label", default=None,
                     help="tag woven into the run_id and trace filename so a run is easy to spot (e.g. arm-v1.1.0)")
+    ap.add_argument("--prompt", choices=sorted(config.ARMS), default=None,
+                    help="configuration arm to run (sets CTF_ARM): baseline | 1.0.0 (selected) | 1.1.0")
     a = ap.parse_args(argv)
 
+    if a.prompt:
+        os.environ["CTF_ARM"] = a.prompt           # select the arm before settings resolve it
     settings = config.load_settings()
     if a.dev:
         settings["data"]["dataset_json"] = settings["data"]["dev_dataset_json"]

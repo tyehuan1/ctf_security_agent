@@ -126,33 +126,43 @@ class PromptVersionTest(unittest.TestCase):
 
 
 class ConfigArmTest(unittest.TestCase):
-    """Both arms select from one tree: image + prompt + version follow CTF_ARM / agent_version."""
+    """Each arm selects image + prompt variant from one tree via CTF_ARM / agent_version."""
 
     def tearDown(self):
         os.environ.pop("CTF_ARM", None)
 
     def test_arm_selects_image_and_prompt(self):
-        for arm, imaging, image in [("1.0.0", False, "ctf-solver-sandbox:v1"),
-                                    ("1.1.0", True, "ctf-solver-sandbox:v1.1")]:
+        for arm, variant, image in [("baseline", "baseline", "ctf-solver-sandbox:v1"),
+                                    ("1.0.0", "frozen", "ctf-solver-sandbox:v1"),
+                                    ("1.1.0", "imaging", "ctf-solver-sandbox:v1.1")]:
             os.environ["CTF_ARM"] = arm
             s = config.load_settings()
             self.assertEqual(s["agent_version"], arm)
             self.assertEqual(s["sandbox"]["image"], image)
-            self.assertEqual(s["sandbox"]["imaging"], imaging)
+            self.assertEqual(s["sandbox"]["prompt"], variant)
 
     def test_unknown_arm_rejected(self):
         os.environ["CTF_ARM"] = "9.9.9"
         with self.assertRaises(ValueError):
             config.load_settings()
 
-    def test_baseline_prompt_is_imaging_prompt_without_the_block(self):
+    def test_prompt_variants_differ_as_specified(self):
         from solver.prompts import build_system_prompt
-        base, arm = build_system_prompt(False), build_system_prompt(True)
-        self.assertNotIn("pytesseract", base)       # baseline carries no imaging guidance
-        self.assertIn("pytesseract", arm)
-        self.assertLess(len(base), len(arm))
-        # removing only the imaging block means the rest is unchanged
-        self.assertTrue(arm.startswith(base[:base.index("Provided files")]))
+        baseline = build_system_prompt("baseline")
+        frozen = build_system_prompt("frozen")
+        imaging = build_system_prompt("imaging")
+        # baseline (pre-improvement): no reasoning block, no run-and-interact block, no imaging
+        self.assertNotIn("Reason before you act", baseline)
+        self.assertNotIn("run the program", baseline)
+        self.assertNotIn("pytesseract", baseline)
+        # frozen (selected v1.0.0): reasoning + run-and-interact, but no imaging
+        self.assertIn("Reason before you act", frozen)
+        self.assertIn("run the program", frozen)
+        self.assertNotIn("pytesseract", frozen)
+        # imaging (v1.1.0): frozen plus the imaging/OCR guidance
+        self.assertIn("pytesseract", imaging)
+        self.assertLess(len(baseline), len(frozen))
+        self.assertLess(len(frozen), len(imaging))
 
 
 class ExtractCandidateTest(unittest.TestCase):

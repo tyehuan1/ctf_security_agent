@@ -19,12 +19,14 @@ SETTINGS_PATH = ROOT / "config" / "settings.json"
 SECRET_KEYS = ("LITELLM_TOKEN",)
 
 # Configuration arms. Each is one fixed config_id="agent" configuration; they differ only in the
-# sandbox image and whether the solver prompt carries the imaging/OCR guidance. The active arm is
-# CTF_ARM (env) if set, else config/settings.json's agent_version. The baseline arm (1.0.0) and its
-# image are never changed; the imaging arm (1.1.0) adds image-handling + OCR.
+# solver prompt variant and the sandbox image. The active arm is CTF_ARM (env) / the --prompt launch
+# flag if set, else config/settings.json's agent_version. The frozen behavior of each arm is never
+# changed. "1.0.0" is the selected (default) configuration; "baseline" is the pre-improvement prompt
+# for comparison; "1.1.0" is the post-freeze imaging+OCR arm.
 ARMS = {
-    "1.0.0": {"image": "ctf-solver-sandbox:v1",   "imaging": False},
-    "1.1.0": {"image": "ctf-solver-sandbox:v1.1", "imaging": True},
+    "baseline": {"image": "ctf-solver-sandbox:v1",   "prompt": "baseline"},
+    "1.0.0":    {"image": "ctf-solver-sandbox:v1",   "prompt": "frozen"},
+    "1.1.0":    {"image": "ctf-solver-sandbox:v1.1", "prompt": "imaging"},
 }
 
 
@@ -71,7 +73,7 @@ def load_settings(settings_path: Path = SETTINGS_PATH) -> dict:
         raise ValueError("config_id must be 'agent' (one fixed configuration)")
     arm = active_arm(s.get("agent_version"))
     s["agent_version"] = arm
-    s["sandbox"] = {**s.get("sandbox", {}), "image": ARMS[arm]["image"], "imaging": ARMS[arm]["imaging"]}
+    s["sandbox"] = {**s.get("sandbox", {}), "image": ARMS[arm]["image"], "prompt": ARMS[arm]["prompt"]}
     if os.getenv("LITELLM_MODEL"):
         s["model"]["name"] = os.environ["LITELLM_MODEL"]
     return s
