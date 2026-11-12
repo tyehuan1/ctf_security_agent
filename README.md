@@ -115,6 +115,35 @@ as `infrastructure_error` instead of retrying it, and holds a lock so two batche
 `--allow-synthetic` on the summarizer is for offline examples only; synthetic fixtures are never
 measured results and must not be submitted.
 
+### Selecting a configuration arm
+
+`CTF_ARM` picks the arm for a launch (unset = `config/settings.json`'s `agent_version`, currently
+`1.1.0`). It sets the sandbox image and whether the prompt carries the imaging/OCR guidance, and is
+recorded in each trace's `attempt_started` (`agent_version`, `code.commit`, and `settings.sandbox`),
+so a result self-identifies its arm. Write each arm to its own labeled files so arms never mix:
+
+```powershell
+# Baseline v1.0.0 (image ctf-solver-sandbox:v1, no imaging prompt)
+$env:CTF_ARM='1.0.0'
+.venv\Scripts\python.exe run_attempt.py cry-perfect-secrecy 1 --results results.v1.0.0.jsonl --traces traces.v1.0.0 --label arm-v1.0.0
+
+# Imaging + OCR arm v1.1.0 (image ctf-solver-sandbox:v1.1, imaging prompt)
+$env:CTF_ARM='1.1.0'
+.venv\Scripts\python.exe run_attempt.py cry-perfect-secrecy 1 --results results.v1.1.0.jsonl --traces traces.v1.1.0 --label arm-v1.1.0
+
+Remove-Item Env:CTF_ARM   # back to the settings.json default
+```
+
+`--label` tags the `run_id` and trace filename (`agent-arm-v1-1-0-cry-perfect-secrecy-t1-…`).
+Summarize an arm by pointing the summarizer at that arm's results/traces:
+`ctf_single_agent_summary.py … --results results.v1.1.0.jsonl --csv per_challenge.v1.1.0.csv`.
+(The baseline arm, byte-for-byte, is also reproducible with `git checkout v1.0.0`.)
+
+The first measured arm run — `cry-perfect-secrecy` ×3 under `v1.1.0`
+(`results.v1.1.0.jsonl` / `traces.v1.1.0/` / `per_challenge.v1.1.0.csv`) — solved **3/3**, where the
+frozen `v1.0.0` baseline was **0/3** (`budget_exhausted`): the imaging+OCR capability let the solver
+read the flag drawn in the XOR-recovered image instead of exhausting its turns on ASCII art.
+
 ## Layout
 
 | Path | Role |

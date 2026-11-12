@@ -1,0 +1,54 @@
+{
+  "config_id": "agent",
+  "source_commit": "f1c9531672c45b24b7fb5f3aa44a7ac33d3602f8",
+  "n_challenges": 1,
+  "planned_attempts": 3,
+  "actual_attempts": 3,
+  "total_successes": 3,
+  "overall_success_rate_pct": 100.0,
+  "complete": true,
+  "incomplete_challenges": [],
+  "records_other_config": 0,
+  "records_unknown_challenge": [],
+  "contains_synthetic": false,
+  "per_challenge": [
+    {
+      "challenge_id": "cry-perfect-secrecy",
+      "category": "cry",
+      "difficulty": "Hard",
+      "complete": true,
+      "attempts": 3,
+      "successes": 3,
+      "successes_of_3": "3/3",
+      "success_rate_pct": 100.0,
+      "sample_sd_pp": 0.0,
+      "mean_input_tokens": 155973.3,
+      "mean_output_tokens": 14765.0,
+      "mean_total_tokens": 170738.3,
+      "mean_elapsed_s": 170.3,
+      "statuses": [
+        "solved",
+        "solved",
+        "solved"
+      ],
+      "incomplete_reason": null,
+      "token_subtotals": {
+        "input": {
+          "known_subtotal": 467920,
+          "known_count": 3,
+          "missing_count": 0
+        },
+        "output": {
+          "known_subtotal": 44295,
+          "known_count": 3,
+          "missing_count": 0
+        }
+      },
+      "run_ids": [
+        "agent-arm-v1-1-0-cry-perfect-secrecy-t1-20261111T205326",
+        "agent-arm-v1-1-0-cry-perfect-secrecy-t2-20261111T205813",
+        "agent-arm-v1-1-0-cry-perfect-secrecy-t3-20261111T210011"
+      ]
+    }
+  ]
+}

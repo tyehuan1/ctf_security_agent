@@ -1,0 +1,2 @@
+challenge_id,difficulty,attempts,successes,success_rate_pct,sample_sd_pp,mean_input_tokens,mean_output_tokens,mean_total_tokens,mean_elapsed_s,statuses
+cry-perfect-secrecy,Hard,3,3,100.0,0.0,155973.3,14765.0,170738.3,170.3,solved solved solved

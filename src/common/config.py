@@ -47,7 +47,9 @@ def code_version() -> dict:
         except Exception:
             return None
     commit = _git("rev-parse", "HEAD")
-    status = _git("status", "--porcelain")
+    # Only tracked modifications count as "dirty"; untracked output/scratch dirs (runs/, traces.*,
+    # results.*) are not code changes and must not flip the flag.
+    status = _git("status", "--porcelain", "--untracked-files=no")
     return {"commit": commit, "dirty": bool(status) if status is not None else None}
 
 

@@ -1,0 +1,21 @@
+{
+  "split": "evaluation",
+  "dataset": "external/CTFTiny/ctftiny.json",
+  "dataset_sha256": "8ac0e735557316969af241510bf31930bb148f4f133915e7e823505ea599cd9d",
+  "source_commit": "f1c9531672c45b24b7fb5f3aa44a7ac33d3602f8",
+  "created_at": "2026-11-12T02:04:32+00:00",
+  "trials_per_challenge": 3,
+  "config_id": "agent",
+  "n_challenges": 1,
+  "challenges": [
+    {
+      "challenge_id": "cry-perfect-secrecy",
+      "category": "cry",
+      "year": "2020",
+      "event": "CSAW-Quals",
+      "challenge": "perfect_secrecy",
+      "path": "ctftiny/cry/perfect_secrecy",
+      "difficulty": "Hard"
+    }
+  ]
+}
