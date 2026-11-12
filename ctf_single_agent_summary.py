@@ -29,9 +29,9 @@ from pathlib import Path
 
 TRIALS = (1, 2, 3)
 INCIDENTS = {"infrastructure_error", "scope_violation"}
-CSV_FIELDS = ("challenge_id", "category", "difficulty", "complete", "attempts", "successes", "successes_of_3",
+CSV_FIELDS = ("challenge_id", "difficulty", "attempts", "successes",
               "success_rate_pct", "sample_sd_pp", "mean_input_tokens", "mean_output_tokens",
-              "mean_total_tokens", "mean_elapsed_s", "statuses", "incomplete_reason")
+              "mean_total_tokens", "mean_elapsed_s", "statuses")
 
 
 def r1(x):

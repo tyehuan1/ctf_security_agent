@@ -29,6 +29,7 @@ controller calls solver.kill(), tears the target down, and records status "timeo
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -100,6 +101,7 @@ class Attempt:
         self.tracer = Tracer(trace_path, self.run_id, budget_cfg.max_chars)
         self.tracer("attempt_started", config_id="agent", challenge_id=challenge_id, trial=trial,
                     sample_type=sample_type, model=settings["model"]["name"], budget=budget_cfg.as_dict(),
+                    agent_version=settings.get("agent_version"), code=config.code_version(),
                     settings=config.redacted(settings))
         self.chal = loader.load_challenge(challenge_id, ds, settings)
         self.verify_privately = bind_verifier(self.chal)   # one-argument form used by the loop
@@ -268,13 +270,18 @@ class Attempt:
         return status, reason
 
 
-def new_run_id(challenge_id: str, trial: int) -> str:
-    return f"agent-{challenge_id}-t{trial}-{datetime.now():%Y%m%dT%H%M%S}"
+def new_run_id(challenge_id: str, trial: int, label: str | None = None) -> str:
+    ts = f"{datetime.now():%Y%m%dT%H%M%S}"
+    if label:
+        safe = re.sub(r"[^0-9A-Za-z]+", "-", label).strip("-")
+        return f"agent-{safe}-{challenge_id}-t{trial}-{ts}"
+    return f"agent-{challenge_id}-t{trial}-{ts}"
 
 
 def run_attempt(challenge_id: str, trial: int, solver: Solver, *, settings: Optional[dict] = None,
                 sample_type: str = "live", results_path: Optional[Path] = None,
-                traces_dir: Optional[Path] = None, runs_dir: Optional[Path] = None, ds=None) -> dict:
+                traces_dir: Optional[Path] = None, runs_dir: Optional[Path] = None, ds=None,
+                label: Optional[str] = None) -> dict:
     """Run one fresh attempt and append its A4 result. Never raises for in-attempt failures."""
     launched = time.monotonic()        # A6: wall-clock is launch -> termination, including setup/teardown
     settings = settings or config.load_settings()
@@ -283,7 +290,7 @@ def run_attempt(challenge_id: str, trial: int, solver: Solver, *, settings: Opti
     traces_dir = Path(traces_dir or config.path(paths["traces_dir"]))
     runs_dir = Path(runs_dir or config.path(paths["runs_dir"]))
 
-    run_id = new_run_id(challenge_id, trial)
+    run_id = new_run_id(challenge_id, trial, label)
     trace_path = traces_dir / f"{run_id}.jsonl"
     attempt = Attempt(challenge_id, trial, solver, settings, sample_type, trace_path, runs_dir / run_id, ds)
     status, _ = attempt.run()

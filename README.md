@@ -45,6 +45,15 @@ Readiness and offline tests:
 
 Record these with the results; do not change them between trials or challenges.
 
+> **Baseline vs. improvement arms.** The table below is the **frozen baseline, `v1.0.0`** (git tag
+> `v1.0.0`, sandbox image `ctf-solver-sandbox:v1`): the configuration that produced the scored
+> `results.jsonl`. `git checkout v1.0.0` reproduces this column exactly. The current working tree
+> carries a post-freeze **improvement arm, `v1.1.0`** (`agent_version 1.1.0` in
+> `config/settings.json`, image `ctf-solver-sandbox:v1.1`), described under
+> [Improvement arms](#improvement-arms-post-freeze); the baseline image and its scored results are
+> left untouched. Each arm is one fixed `config_id = "agent"` configuration; only one is active at a
+> time (whatever the working tree / checked-out tag points to).
+
 | Item | Value |
 |---|---|
 | Agent version | `1.0.0` (`agent_version` in `config/settings.json`); see the change log |
@@ -62,6 +71,18 @@ Record these with the results; do not change them between trials or challenges.
 | Tools / versions | `src/tools/` (run_shell, inspect_file, python_exec, connect_endpoint, submit_flag); sandbox image `ctf-solver-sandbox:v1`, id `sha256:a5fc9d1e674cb3ff7084e0141325fdd9414869823eadc7e8c5f8f20020511d58`, pwntools 4.15.0, pycryptodome, requests, sympy, Debian binwalk 2.4.3, curl 8.14.1 |
 | Isolation | sanitized per-attempt compose (no docker.sock, privileged, cap_add, published ports); internal per-attempt network; target alias `target` |
 | Dependencies | `requirements.txt` (pip freeze, Python 3.11.9) |
+
+## Improvement arms (post-freeze)
+
+Each arm is a self-contained `config_id = "agent"` configuration built on the frozen baseline. It
+gets its own `agent_version`, `PROMPT_VERSION = ctf-solver-<agent_version>`, and sandbox image tag,
+so a trace's `attempt_started` (which embeds the full settings and `agent_version`) is enough to
+tell which arm produced any result. The baseline (`v1.0.0`, image `ctf-solver-sandbox:v1`,
+id `sha256:a5fc9d1e67…`) is never rebuilt in place.
+
+| Arm | Delta from baseline | Sandbox image |
+|---|---|---|
+| **`v1.1.0` — imaging + OCR** | Adds image-handling and OCR so the solver can decode/manipulate a *revealed* image and read a flag drawn in it as short text, instead of dumping the pixels as ASCII art (which the `max_chars` cap truncates, making the flag unrecoverable). Built from a **separate** Dockerfile [`sandbox/Dockerfile.imaging`](sandbox/Dockerfile.imaging) (baseline `sandbox/Dockerfile` untouched). New prompt paragraph (general to visual/stego): when a flag appears drawn/rendered in an image, use Pillow + numpy to combine/XOR/bit-plane the image and read the result with `pytesseract` OCR (or `pyzbar` for a QR/barcode) rather than printing ASCII art. Model, budgets (`max_turns 25`, caps), tools, and isolation are unchanged. | `ctf-solver-sandbox:v1.1`, id `sha256:beb66bc273a906d6c650819069b6c9a8ec5c8db6efeed624dfb90fd8aa4a0413`. Baseline libs + **Pillow 13.0.0, numpy 2.4.6, pytesseract 0.3.13** (engine **tesseract 5.5.0**, apt `tesseract-ocr`), **pyzbar 0.1.9** (apt `libzbar0`). Build: `docker build -f sandbox/Dockerfile.imaging -t ctf-solver-sandbox:v1.1 sandbox/` |
 
 ## Pilot runs (verification only, not scores)
 
@@ -125,6 +146,7 @@ in the next version. `PROMPT_VERSION` is `ctf-solver-<agent_version>`.
 | 0.3.0 | On the web challenge (MFW) the solver finds the LFI bug, the empty `flag.php`, and the `.git` clue, but never sends a single HTTP request to the live target before the turn cap — it only reads the provided source. | The model treats the provided source as the place the flag lives and does not know to exploit the running service, nor which web tactics to try. | Tell the agent to drive live web services from `python_exec` with the `requests` library; clarify that provided files are for finding the bug but the flag is usually on the running target (while a files-only challenge keeps the flag in the files); and list concrete tactics — `php://filter` for LFI, `/.git/` when Git is mentioned, code injection for `assert()`/`eval()`, and to consider SQLi, SSRF and path traversal. | Pilot 6: worked — MFW now sends real HTTP requests to the live target (`requests.get('http://target:8000/')` returns the page) and tries LFI and path-traversal variants (`?page=../flag`, URL-encoded) against the running server, where pilot 5 made no request at all. Two turns were still wasted calling `curl` (not installed in the sandbox) and it did not reach `php://filter` before the 12-turn cap, so no solve yet. |
 | 0.4.0 | On web challenges the solver repeatedly reaches for `curl` (e.g. `curl -s http://target:8000/`), which is not installed in the sandbox, wasting one or more turns on "curl: not found" before falling back to the `requests` library. | `curl` is the reflexive tool for an HTTP request, and the sandbox image did not provide it; a scarce turn is lost each time the model has to discover that and switch. | Add `curl` to the solver sandbox image (`sandbox/Dockerfile`), a new program in the sandbox — it is the natural tool for probing a web service and saves the wasted turns, while `requests` in `python_exec` remains available for scripted exploitation. | Pilot 7 (web only): `curl` is now installed in the image (8.14.1, verified). This trial did not exercise it — the model reached the live service with `connect_endpoint` instead of `curl` or `requests` and made no "curl: not found" error, so no turns were lost to it, but the saved-turns benefit was not demonstrated either (run-to-run variance at temperature 0.6). It spent most turns on recon and ended on a `connect_endpoint` timeout; still no solve. Needs more web trials to confirm. |
 | 0.5.0 | With GPT 4.1 Mini the solver now does the right kind of work in every category but still solves only 1/5 development challenges — it runs out of its 12 turns with real progress (built the overflow, found the LFI, found the IV hint) but does not finish. Turns, not approach, are the binding limit. | A stronger model reasoning within the same harness may actually finish these, and most challenges stop as soon as the flag is found, so more turns cost little. | Freeze (v1.0.0): switch the model to `claude-haiku-5-5` (same prompt and tools, chosen by pilot), raise `max_turns` 12 → 25, and raise `attempt_token_cap` 200000 → 400000 to fit the heavier per-attempt token use. | Pilot 8 (one trial each, same prompt): haiku solved **4/5** — rev-checker, rev-rock, warmup and MFW — vs 1/5 for Mini; only bricks_of_gold (crypto) remained unsolved. Haiku uses ~2–3× the tokens per attempt (mean 86.8K in / 6.7K out) at a similar or lower cost (~$0.006/attempt) because its rates are ~4× cheaper. |
+| 1.0.0 | On the scored set, `cry-perfect-secrecy` is 0/3 although the agent's reasoning is right: it identifies one-time-pad key reuse and XORs the two PNGs to recover the image, but the sandbox has no image library, so it decodes the PNG by hand and renders the result as ASCII art. That overflows the `max_chars` tool-output cap; working around the truncation burns its remaining turns and the flag (drawn in the revealed image) is never read. | The agent has the right method but no way to *read* a flag that is drawn in an image — it can only dump pixels as text, which the output cap mangles. Giving it image manipulation plus OCR lets it extract the flag as a short string instead. | Post-freeze **imaging + OCR arm (v1.1.0)**, a separate configuration leaving the frozen baseline untouched: add Pillow + numpy (image handling), pytesseract/tesseract (OCR) and pyzbar (QR/barcode) to a new sandbox image `ctf-solver-sandbox:v1.1` (own Dockerfile), and add a general visual/stego prompt line telling the agent to manipulate a revealed image with the image library and read it with OCR rather than printing ASCII art. | Capability verified in-container: tesseract 5.5.0, Pillow 13.0.0 and numpy 2.4.6 import; a round-trip test renders text to an image and OCRs it back, and an image XOR recovers the key. The solve improvement on `cry-perfect-secrecy` itself is **not yet measured** — pending a pilot/re-run of this arm. |
 
 ## Reused code and AI assistance
 

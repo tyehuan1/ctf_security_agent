@@ -1,7 +1,7 @@
 {
   "$comment": "Non-secret run configuration for the single fixed configuration (config_id=agent). Secrets live in .env.",
   "config_id": "agent",
-  "agent_version": "1.0.0",
+  "agent_version": "1.1.0",
   "model": {
     "provider": "Duke AI Gateway (LiteLLM, OpenAI-compatible)",
     "$comment": "Exact id from GET https://litellm.oit.duke.edu/v1/models (requires Duke network/VPN). Frozen at v1.0.0 after pilot 8: claude-haiku-5-5 solved 4/5 development challenges vs 1/5 for GPT 4.1 Mini under the same prompt.",

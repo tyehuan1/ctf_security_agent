@@ -36,6 +36,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--traces", type=Path, default=None)
     ap.add_argument("--runs", type=Path, default=None)
     ap.add_argument("--no-wait", action="store_true", help="skip the pre-attempt rate-limit window check")
+    ap.add_argument("--label", default=None,
+                    help="tag woven into the run_id and trace filename so a run is easy to spot (e.g. arm-v1.1.0)")
     a = ap.parse_args(argv)
 
     settings = config.load_settings()
@@ -52,7 +54,7 @@ def main(argv: list[str] | None = None) -> int:
     if not a.no_wait:
         wait_for_rate_window(settings)            # don't inherit a previous run's rate-limit window
     rec = run_attempt(a.challenge_id, a.trial, make_solver, settings=settings, ds=ds,
-                      results_path=a.results, traces_dir=a.traces, runs_dir=a.runs)
+                      results_path=a.results, traces_dir=a.traces, runs_dir=a.runs, label=a.label)
     print(f"{rec['run_id']}: {rec['status']} verified={rec['verified']} elapsed_s={rec['elapsed_s']} "
           f"input={rec['input_tokens']} output={rec['output_tokens']} cost={rec['cost_usd']}")
     print(f"trace: {rec['trace_file']}")

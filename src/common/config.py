@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import subprocess
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -17,6 +18,38 @@ ROOT = Path(__file__).resolve().parents[2]
 SETTINGS_PATH = ROOT / "config" / "settings.json"
 SECRET_KEYS = ("LITELLM_TOKEN",)
 
+# Configuration arms. Each is one fixed config_id="agent" configuration; they differ only in the
+# sandbox image and whether the solver prompt carries the imaging/OCR guidance. The active arm is
+# CTF_ARM (env) if set, else config/settings.json's agent_version. The baseline arm (1.0.0) and its
+# image are never changed; the imaging arm (1.1.0) adds image-handling + OCR.
+ARMS = {
+    "1.0.0": {"image": "ctf-solver-sandbox:v1",   "imaging": False},
+    "1.1.0": {"image": "ctf-solver-sandbox:v1.1", "imaging": True},
+}
+
+
+def active_arm(settings_agent_version: str | None = None) -> str:
+    """The arm this process runs: CTF_ARM if set, else the given/settings agent_version."""
+    arm = os.getenv("CTF_ARM") or settings_agent_version
+    if arm is None:
+        arm = json.loads(SETTINGS_PATH.read_text(encoding="utf-8")).get("agent_version")
+    if arm not in ARMS:
+        raise ValueError(f"unknown configuration arm {arm!r}; known arms: {sorted(ARMS)}")
+    return arm
+
+
+def code_version() -> dict:
+    """Git commit the run executed at, for the trace (not the frozen A4 result object)."""
+    def _git(*args):
+        try:
+            r = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, timeout=10)
+            return r.stdout.strip() if r.returncode == 0 else None
+        except Exception:
+            return None
+    commit = _git("rev-parse", "HEAD")
+    status = _git("status", "--porcelain")
+    return {"commit": commit, "dirty": bool(status) if status is not None else None}
+
 
 def path(rel: str) -> Path:
     """Resolve a repo-relative path from settings.json."""
@@ -24,14 +57,19 @@ def path(rel: str) -> Path:
 
 
 def load_settings(settings_path: Path = SETTINGS_PATH) -> dict:
-    """Load settings.json, then the optional LITELLM_MODEL override from .env.
+    """Load settings.json, resolve the configuration arm, then the optional LITELLM_MODEL override.
 
-    There is deliberately no caller-override hook: one fixed configuration (config_id=agent).
+    config_id is always "agent" (one fixed configuration). The arm (CTF_ARM env or agent_version)
+    selects the sandbox image and whether the prompt carries imaging/OCR guidance; it is recorded
+    in agent_version and the sandbox block so every trace self-identifies which arm ran.
     """
     load_dotenv(ROOT / ".env")
     s = json.loads(Path(settings_path).read_text(encoding="utf-8"))
     if s.get("config_id") != "agent":
         raise ValueError("config_id must be 'agent' (one fixed configuration)")
+    arm = active_arm(s.get("agent_version"))
+    s["agent_version"] = arm
+    s["sandbox"] = {**s.get("sandbox", {}), "image": ARMS[arm]["image"], "imaging": ARMS[arm]["imaging"]}
     if os.getenv("LITELLM_MODEL"):
         s["model"]["name"] = os.environ["LITELLM_MODEL"]
     return s

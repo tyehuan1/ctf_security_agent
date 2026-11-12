@@ -1,0 +1,35 @@
+# CTF solver sandbox image — IMAGING + OCR ARM (agent_version 1.1.0).
+#
+# Post-freeze improvement arm. It is the v1.0.0 baseline (sandbox/Dockerfile) plus image-handling
+# and OCR libraries, so the solver can decode/manipulate a revealed image and read a flag drawn in
+# it as short text instead of dumping ASCII art (which the max_chars cap truncates). The frozen
+# baseline image `ctf-solver-sandbox:v1` and its Dockerfile are left untouched; this builds a
+# separate tag.
+# Build:  docker build -f sandbox/Dockerfile.imaging -t ctf-solver-sandbox:v1.1 sandbox/
+FROM python:3.11-slim
+
+ENV DEBIAN_FRONTEND=noninteractive PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
+
+# Baseline file/binary inspection utilities + a non-root user, unchanged from v1 — plus the native
+# engines the imaging libraries need: tesseract (OCR) and libzbar0 (QR/barcode decode).
+# binwalk comes from Debian: the PyPI "binwalk" 2.1.0 package is incomplete (no binwalk.core).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        file binutils xxd coreutils procps net-tools binwalk curl \
+        tesseract-ocr libzbar0 \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -m -u 1000 -s /bin/bash solver
+
+# Baseline Python libraries (v1) + image handling/OCR for visual & stego challenges:
+#   Pillow + numpy  -> open, combine/XOR, bit-plane and channel manipulation of images
+#   pytesseract     -> OCR a revealed image to short text (reads the tesseract engine above)
+#   pyzbar          -> decode a QR/barcode a flag may be drawn as (reads libzbar0 above)
+RUN pip install --no-cache-dir pwntools pycryptodome requests sympy \
+        Pillow numpy pytesseract pyzbar
+
+# The container runs with a read-only root filesystem; point caches at the /tmp tmpfs and keep
+# pwntools from trying to drive a terminal.
+ENV HOME=/tmp XDG_CACHE_HOME=/tmp/.cache PWNLIB_NOTERM=1
+
+WORKDIR /workspace
+USER solver
+CMD ["sleep", "infinity"]

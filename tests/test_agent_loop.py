@@ -1,6 +1,7 @@
 """Agent.request_next_action with a scripted gateway client (no Docker, no network)."""
 
 import json
+import os
 import unittest
 
 import tests  # noqa: F401
@@ -122,6 +123,36 @@ class PromptVersionTest(unittest.TestCase):
     def test_prompt_version_matches_agent_version(self):
         from solver.prompts import PROMPT_VERSION
         self.assertEqual(PROMPT_VERSION, f"ctf-solver-{config.load_settings()['agent_version']}")
+
+
+class ConfigArmTest(unittest.TestCase):
+    """Both arms select from one tree: image + prompt + version follow CTF_ARM / agent_version."""
+
+    def tearDown(self):
+        os.environ.pop("CTF_ARM", None)
+
+    def test_arm_selects_image_and_prompt(self):
+        for arm, imaging, image in [("1.0.0", False, "ctf-solver-sandbox:v1"),
+                                    ("1.1.0", True, "ctf-solver-sandbox:v1.1")]:
+            os.environ["CTF_ARM"] = arm
+            s = config.load_settings()
+            self.assertEqual(s["agent_version"], arm)
+            self.assertEqual(s["sandbox"]["image"], image)
+            self.assertEqual(s["sandbox"]["imaging"], imaging)
+
+    def test_unknown_arm_rejected(self):
+        os.environ["CTF_ARM"] = "9.9.9"
+        with self.assertRaises(ValueError):
+            config.load_settings()
+
+    def test_baseline_prompt_is_imaging_prompt_without_the_block(self):
+        from solver.prompts import build_system_prompt
+        base, arm = build_system_prompt(False), build_system_prompt(True)
+        self.assertNotIn("pytesseract", base)       # baseline carries no imaging guidance
+        self.assertIn("pytesseract", arm)
+        self.assertLess(len(base), len(arm))
+        # removing only the imaging block means the rest is unchanged
+        self.assertTrue(arm.startswith(base[:base.index("Provided files")]))
 
 
 class ExtractCandidateTest(unittest.TestCase):

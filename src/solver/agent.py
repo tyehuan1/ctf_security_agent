@@ -22,8 +22,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from solver.llm import GatewayClient, LLMError, ModelReply, ToolCall
-from solver.prompts import PROMPT_VERSION, SYSTEM_PROMPT
-from solver.sandbox import Sandbox
+from solver.prompts import build_system_prompt, prompt_version
+from solver.sandbox import DEFAULT_IMAGE, Sandbox
 from tools.runner import ToolRunner
 from tools.specs import reasoning_field, tool_specs
 from common.usage import NO_USAGE
@@ -115,7 +115,9 @@ class Agent:
     # ---------------------------------------------------------------- lifecycle
 
     def reset(self, workspace: Path, context: dict) -> None:
-        self.sandbox = Sandbox(self.network, workspace, self.run_id)
+        sandbox_cfg = self.settings.get("sandbox", {})
+        image = sandbox_cfg.get("image") or DEFAULT_IMAGE
+        self.sandbox = Sandbox(self.network, workspace, self.run_id, image=image)
         self.sandbox.start()
         self.runner = ToolRunner(self.sandbox, context.get("target"),
                                  int(self.settings["budget"]["max_chars"]))
@@ -133,10 +135,11 @@ class Agent:
                 "Begin with the observe step. Each reply states your hypothesis in one short sentence "
                 "and calls a tool; never reply with prose alone. When you are confident, submit with "
                 "submit_flag.\n"
-                f"(prompt_version={PROMPT_VERSION})"
+                f"(prompt_version={prompt_version(self.settings['agent_version'])})"
             ),
         }
-        self.messages = [{"role": "system", "content": SYSTEM_PROMPT}, user]
+        system_prompt = build_system_prompt(bool(sandbox_cfg.get("imaging", True)))
+        self.messages = [{"role": "system", "content": system_prompt}, user]
 
     def kill(self) -> dict:
         if not self.sandbox:
