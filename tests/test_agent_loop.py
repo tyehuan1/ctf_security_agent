@@ -135,7 +135,8 @@ class ConfigArmTest(unittest.TestCase):
         for arm, variant, image in [("baseline", "baseline", "ctf-solver-sandbox:v1"),
                                     ("1.0.0", "frozen", "ctf-solver-sandbox:v1"),
                                     ("1.1.0", "imaging", "ctf-solver-sandbox:v1.1"),
-                                    ("2.1.0", "sigrok", "ctf-solver-sandbox:v2.1")]:
+                                    ("2.1.0", "sigrok", "ctf-solver-sandbox:v2.1"),
+                                    ("2.2.0", "sigrok", "ctf-solver-sandbox:v2.2")]:
             os.environ["CTF_ARM"] = arm
             s = config.load_settings()
             self.assertEqual(s["agent_version"], arm)

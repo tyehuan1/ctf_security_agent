@@ -1,0 +1,63 @@
+# CTF solver sandbox image — BROAD TOOLING ARM (agent_version 2.2.0).
+#
+# The hardware arm (sandbox/Dockerfile.sigrok, ctf-solver-sandbox:v2.1) plus tools for more
+# challenge types:
+#   reverse : radare2 (binutils/objdump/readelf already in base)
+#   crypto  : z3-solver (pwntools/pycryptodome/sympy already in base)
+#   web     : beautifulsoup4 (requests already in base)
+#   stego   : tshark, foremost (binwalk already in base)
+#   pwn     : libc-database — cloned and seeded with a handful of common Ubuntu libcs so leak-based
+#             identification works OFFLINE (the solver sandbox has no internet at run time).
+# Exposed as `libc-find` / `libc-id` wrappers so the project's `find` script does not shadow the
+# Unix `find` command. Earlier arms are left untouched; this builds a separate tag.
+# Build:  docker build -f sandbox/Dockerfile.tools -t ctf-solver-sandbox:v2.2 sandbox/
+FROM ctf-solver-sandbox:v2.1
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+USER root
+
+# System tools. tshark: suppress the interactive "allow non-root capture" prompt (we only read
+# pcaps). git/curl/ca-certificates are build-time deps for radare2 + libc-database seeding.
+# radare2 is not in Debian trixie, so it is installed from the official GitHub release .deb.
+RUN echo "wireshark-common wireshark-common/install-setuid boolean false" | debconf-set-selections \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        tshark foremost git curl ca-certificates \
+    && r2url=$(curl -s https://api.github.com/repos/radareorg/radare2/releases/latest \
+        | grep -oE 'https://[^"]*radare2_[0-9][^"]*_amd64\.deb' | head -1) \
+    && curl -sL -o /tmp/r2.deb "$r2url" \
+    && apt-get install -y /tmp/r2.deb \
+    && rm -f /tmp/r2.deb \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python libraries.
+RUN pip install --no-cache-dir z3-solver beautifulsoup4
+
+# libc-database: clone and seed a handful of common Ubuntu libcs (amd64). Best-effort per version so
+# a single 404 does not fail the build; tries the archive, security, and old-releases pools.
+RUN git clone --depth 1 https://github.com/niklasb/libc-database /opt/libc-database \
+    && cd /opt/libc-database \
+    && for v in 2.23 2.27 2.31 2.35 2.39; do \
+         for base in http://archive.ubuntu.com/ubuntu/pool/main/g/glibc/ \
+                     http://security.ubuntu.com/ubuntu/pool/main/g/glibc/ \
+                     http://old-releases.ubuntu.com/ubuntu/pool/main/g/glibc/; do \
+           deb=$(curl -s "$base" | grep -oE "libc6_${v}[^\"]*_amd64\.deb" | head -1); \
+           [ -n "$deb" ] || continue; \
+           curl -s -o /tmp/libc.deb "$base$deb" || continue; \
+           dpkg-deb -x /tmp/libc.deb /tmp/libcx || { rm -rf /tmp/libcx /tmp/libc.deb; continue; }; \
+           libc=$(find /tmp/libcx -name libc.so.6 | head -1); \
+           [ -n "$libc" ] && ./add "$libc" && echo "libc-database: added $v ($deb)"; \
+           rm -rf /tmp/libcx /tmp/libc.deb; \
+           break; \
+         done; \
+       done \
+    && ls db/*.symbols >/dev/null 2>&1 || (echo "ERROR: libc-database seeded no libcs" >&2; exit 1)
+
+RUN printf '#!/bin/sh\nexec /opt/libc-database/find "$@"\n' > /usr/local/bin/libc-find \
+    && printf '#!/bin/sh\nexec /opt/libc-database/identify "$@"\n' > /usr/local/bin/libc-id \
+    && chmod +x /usr/local/bin/libc-find /usr/local/bin/libc-id \
+    && chown -R solver:solver /opt/libc-database
+
+USER solver
+WORKDIR /workspace
+CMD ["sleep", "infinity"]

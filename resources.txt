@@ -17,9 +17,14 @@ Sandbox images (built from sandbox/; recorded with `docker image inspect --forma
                            sandbox/Dockerfile.imaging — imaging+OCR arm (v1.1.0): v1 + Pillow, numpy,
                            pytesseract (tesseract 5.5.0), pyzbar (libzbar0)
   ctf-solver-sandbox:v2.1  sha256:3c0436b1532f90a7c7ad9951a3aaa646789e055e45ff23050410b1fd88da502c
-                           sandbox/Dockerfile.sigrok — hardware arm (v2.1.0), default for HTB runs:
+                           sandbox/Dockerfile.sigrok — hardware arm (v2.1.0):
                            v1.1 + sigrok-cli 0.7.2 + libsigrokdecode4 (uart/spi/i2c decoders),
                            gerbv (render PCB gerbers for OCR), and unzip
+  ctf-solver-sandbox:v2.2  sha256:0cfdddcdc0f162ae27e7e9f0bef8cd988b8a249e7769e82dbb68c0b6f8429fd1
+                           sandbox/Dockerfile.tools — broad-tooling arm (v2.2.0), default for HTB runs:
+                           v2.1 + radare2 6.2.6 (GitHub release .deb; not in Debian trixie), z3-solver,
+                           beautifulsoup4, tshark, foremost, and libc-database seeded offline with
+                           Ubuntu libc6 2.23/2.27/2.31/2.35/2.39 (exposed as libc-find / libc-id)
 
 Windows checkout notes (content is unchanged; only on-disk layout differs)
   - Repo-local git config: core.protectNTFS=false, core.autocrlf=false, core.eol=lf, core.longpaths=true

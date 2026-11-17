@@ -30,13 +30,15 @@ HTB_FLAG_MODES = ("manual", "auto")
 # solver prompt variant and the sandbox image. The active arm is CTF_ARM (env) / the --prompt launch
 # flag if set, else config/settings.json's agent_version. The frozen behavior of each arm is never
 # changed. "1.0.0" is the selected CTFTiny configuration; "baseline" is the pre-improvement prompt
-# for comparison; "1.1.0" adds imaging+OCR; "2.1.0" adds sigrok logic-analyzer decoding on top of
-# imaging and is the default for HTB runs (run_htb.py). CTFTiny's scored default stays "1.0.0".
+# for comparison; "1.1.0" adds imaging+OCR; "2.1.0" adds sigrok logic-analyzer + gerbv; "2.2.0" adds
+# broad challenge tooling (radare2, z3, tshark, foremost, libc-database, ...) and is the default for
+# HTB runs (run_htb.py). CTFTiny's scored default stays "1.0.0".
 ARMS = {
     "baseline": {"image": "ctf-solver-sandbox:v1",   "prompt": "baseline"},
     "1.0.0":    {"image": "ctf-solver-sandbox:v1",   "prompt": "frozen"},
     "1.1.0":    {"image": "ctf-solver-sandbox:v1.1", "prompt": "imaging"},
     "2.1.0":    {"image": "ctf-solver-sandbox:v2.1", "prompt": "sigrok"},
+    "2.2.0":    {"image": "ctf-solver-sandbox:v2.2", "prompt": "sigrok"},
 }
 
 
