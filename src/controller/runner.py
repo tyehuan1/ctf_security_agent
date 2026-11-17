@@ -41,8 +41,9 @@ from common.schemas import SUCCESS_STATUS, make_result
 from common.usage import NO_USAGE
 from controller import loader
 from controller.budget import AttemptBudget, Budget, DeadlineExceeded, call_with_deadline
+from controller.flag_gateway import HTB_CANDIDATE, build_gateway
 from controller.loader import ScopeViolation
-from controller.record import Tracer, append_result
+from controller.record import Tracer, append_htb_result, append_result
 from controller.target import Target, TargetError
 from controller.verifier import bind_verifier
 
@@ -83,7 +84,8 @@ class Attempt:
     """Per-attempt state; method names are the appendix's step names."""
 
     def __init__(self, challenge_id: str, trial: int, solver_or_factory, settings: dict, sample_type: str,
-                 trace_path: Path, run_dir: Path, ds=None):
+                 trace_path: Path, run_dir: Path, ds=None, htb_dir: Optional[Path] = None,
+                 chal=None, target=None, verify=None, context_provider=None):
         self.challenge_id, self.trial = challenge_id, trial
         # Accept either a pre-constructed Solver (tests) or a factory called once the attempt
         # network exists: factory(settings, network, run_id, trace_path) -> Solver.
@@ -103,11 +105,22 @@ class Attempt:
                     sample_type=sample_type, model=settings["model"]["name"], budget=budget_cfg.as_dict(),
                     agent_version=settings.get("agent_version"), code=config.code_version(),
                     settings=config.redacted(settings))
-        self.chal = loader.load_challenge(challenge_id, ds, settings)
-        self.verify_privately = bind_verifier(self.chal)   # one-argument form used by the loop
-        self.target = Target(self.chal, self.run_id, settings, run_dir)
+        # The challenge, target and context source are injected for an operator/HTB run (control
+        # plane) and default to the frozen dataset+compose path for CTFTiny.
+        self.chal = chal if chal is not None else loader.load_challenge(challenge_id, ds, settings)
+        self.verify_privately = verify if verify is not None else bind_verifier(self.chal)
+        self._context_provider = context_provider
+        # How a candidate flag is handled: local answer-key verify (CTFTiny, frozen) or an HTB
+        # gateway (manual capture / MCP auto-submit). The solver is unaffected either way.
+        self.flag_mode = settings.get("flag", {}).get("mode", "local")
+        self.flag_gateway = build_gateway(
+            self.flag_mode, verify=self.verify_privately, htb_dir=Path(htb_dir or run_dir.parent),
+            challenge_id=challenge_id, run_id=self.run_id, challenge_name=self.chal.name)
+        self.target = target if target is not None else Target(self.chal, self.run_id, settings, run_dir)
         self.workspace: Optional[Path] = None
         self.wrong_submissions = 0
+        self.last_candidate: Optional[str] = None     # HTB record: the last candidate handled
+        self.last_outcome = None                      # HTB record: its GatewayOutcome
 
     # -------------------------------------------------------------- appendix steps
 
@@ -133,11 +146,36 @@ class Attempt:
         self.budget.start()
 
     def initial_contestant_context(self) -> list:
-        context, inventory = loader.export_contestant_context(
-            self.chal, self.challenge_id, self.workspace, self.settings["target"]["local_host"])
+        if self._context_provider is not None:       # control-plane run: operator/MCP-supplied files
+            context, inventory = self._context_provider(self.workspace)
+        else:                                         # frozen CTFTiny path
+            context, inventory = loader.export_contestant_context(
+                self.chal, self.challenge_id, self.workspace, self.settings["target"]["local_host"])
         self.tracer("model_request", role="initial_context", context=context, export_inventory=inventory)
         self.solver.reset(self.workspace, context)   # fresh conversation and memory
         return [context]
+
+    def verify_egress_isolation(self) -> None:
+        """For a forwarder-backed target: prove in the live solver sandbox that only `target` is
+        reachable and general outbound fails. Raises ScopeViolation if the sandbox has egress."""
+        sb = getattr(self.solver, "sandbox", None)
+        if sb is None:
+            return
+        host = self.settings["target"]["local_host"]
+        port = int(getattr(self.target, "listen_port", 0)) or int(self.target.endpoint["port"])
+        ok = sb.exec(["python3", "-c",
+                      f"import socket;socket.create_connection(('{host}',{port}),timeout=8).close();print('OK')"], 12)
+        blk = sb.exec(["python3", "-c",
+                       "import socket\ntry:\n socket.create_connection(('1.1.1.1',53),timeout=5);print('OPEN')\n"
+                       "except Exception:\n print('BLOCKED')"], 12)
+        target_reachable = ok.status == "ok" and "OK" in (ok.stdout or "")
+        general_blocked = "BLOCKED" in (blk.stdout or "")
+        self.tracer("egress_check", target_reachable=target_reachable, general_egress_blocked=general_blocked,
+                    target=f"{host}:{port}")
+        if not general_blocked:
+            raise ScopeViolation("solver sandbox has general outbound egress; only target must be reachable")
+        if not target_reachable:
+            raise ScopeViolation("solver sandbox cannot reach target through the forwarder")
 
     def attempt_budget_remains(self) -> bool:
         return self.budget.exhausted_reason() is None
@@ -173,9 +211,10 @@ class Attempt:
     def record_model_usage(self, usage: dict) -> None:
         self.budget.record_usage(usage["input_tokens"], usage["output_tokens"], usage["cost_usd"])
 
-    def record_submission(self, flag: str, observation) -> None:
-        self.tracer("submission", candidate=self.tracer.capture(flag, "submission"))
-        self.tracer("verification", verified=observation.verified)
+    def record_submission(self, flag: str, outcome) -> None:
+        self.tracer("submission", candidate=self.tracer.capture(flag, "submission"),
+                    source=getattr(outcome, "source", None), submitted=getattr(outcome, "submitted", False))
+        self.tracer("verification", verified=outcome.verified, detail=getattr(outcome, "detail", "") or None)
 
     def execute_scoped_tool_with_timeout(self, action: Action) -> dict:
         self.tracer("tool_proposal", tool=action.tool, arguments=action.arguments)
@@ -228,16 +267,24 @@ class Attempt:
             self.reset_solver_and_target()
             self.start_attempt_timer()
             observations = self.initial_contestant_context()
+            if getattr(self.target, "egress_network", None):   # forwarder-backed target: prove isolation
+                self.verify_egress_isolation()
             while self.attempt_budget_remains():
                 action, usage = self.request_next_action(observations)
                 self.record_model_usage(usage)
                 if action.is_flag_submission:
-                    observation = self.verify_privately(action.flag)
-                    self.record_submission(action.flag or "", observation)
-                    if observation.verified:
-                        status, reason = SUCCESS_STATUS, "verified flag"
+                    justification = (action.arguments or {}).get("reason") or getattr(action, "content", "") or ""
+                    outcome = self.flag_gateway.handle(action.flag or "", reason=justification)
+                    self.last_candidate, self.last_outcome = action.flag or "", outcome
+                    self.record_submission(action.flag or "", outcome)
+                    if outcome.verified is True:
+                        status, reason = SUCCESS_STATUS, outcome.reason
+                        break
+                    if outcome.pending:          # HTB: candidate captured; stop for (manual) submission
+                        status, reason = HTB_CANDIDATE, outcome.reason
                         break
                     self.wrong_submissions += 1
+                    observation = {"verified": outcome.verified}   # solver sees only the boolean
                 elif action.kind == "give_up":
                     status, reason = "no_flag", "solver gave up"
                     break
@@ -281,25 +328,47 @@ def new_run_id(challenge_id: str, trial: int, label: str | None = None) -> str:
 def run_attempt(challenge_id: str, trial: int, solver: Solver, *, settings: Optional[dict] = None,
                 sample_type: str = "live", results_path: Optional[Path] = None,
                 traces_dir: Optional[Path] = None, runs_dir: Optional[Path] = None, ds=None,
-                label: Optional[str] = None) -> dict:
-    """Run one fresh attempt and append its A4 result. Never raises for in-attempt failures."""
+                label: Optional[str] = None, provision=None) -> dict:
+    """Run one fresh attempt and record its result. For the frozen CTFTiny path (flag mode 'local')
+    this appends an A4 result to results.jsonl; for the HTB modes it appends a separate HTB record
+    (candidate + HTB verdict) and never touches the frozen A4 file. Never raises for in-attempt
+    failures."""
     launched = time.monotonic()        # A6: wall-clock is launch -> termination, including setup/teardown
     settings = settings or config.load_settings()
     paths = settings["paths"]
     results_path = Path(results_path or config.path(paths["results"]))
     traces_dir = Path(traces_dir or config.path(paths["traces_dir"]))
     runs_dir = Path(runs_dir or config.path(paths["runs_dir"]))
+    htb_dir = results_path.parent
 
     run_id = new_run_id(challenge_id, trial, label)
     trace_path = traces_dir / f"{run_id}.jsonl"
-    attempt = Attempt(challenge_id, trial, solver, settings, sample_type, trace_path, runs_dir / run_id, ds)
+    # A control plane (operator/HTB run) provisions the challenge, forwarder target, and file staging
+    # once the run_id is known; without one this is the frozen CTFTiny dataset+compose path.
+    chal = target = context_provider = None
+    if provision is not None:
+        chal, target, context_provider = provision(run_id, settings)
+    attempt = Attempt(challenge_id, trial, solver, settings, sample_type, trace_path,
+                      runs_dir / run_id, ds, htb_dir=htb_dir, chal=chal, target=target,
+                      context_provider=context_provider)
     status, _ = attempt.run()
 
     try:
         trace_file = trace_path.resolve().relative_to(config.ROOT).as_posix()
     except ValueError:
         trace_file = trace_path.as_posix()
-    rec = make_result(run_id=run_id, challenge_id=challenge_id, trial=trial, status=status,
-                      elapsed_s=time.monotonic() - launched, **attempt.budget.totals(), trace_file=trace_file,
-                      reset_id=attempt.target.reset_id, sample_type=sample_type)
+
+    common = dict(run_id=run_id, challenge_id=challenge_id, trial=trial, status=status,
+                  elapsed_s=time.monotonic() - launched, trace_file=trace_file,
+                  reset_id=attempt.target.reset_id, sample_type=sample_type)
+    if attempt.flag_mode in config.HTB_FLAG_MODES:
+        outcome = attempt.last_outcome
+        rec = {"config_id": "agent", **common, "flag_mode": attempt.flag_mode,
+               "candidate": attempt.last_candidate,
+               "verified": getattr(outcome, "verified", None),
+               "submitted": getattr(outcome, "submitted", False),
+               "detail": getattr(outcome, "detail", "") or "",
+               **attempt.budget.totals()}
+        return append_htb_result(htb_dir / "htb_results.jsonl", rec)
+    rec = make_result(**common, **attempt.budget.totals())
     return append_result(results_path, rec)

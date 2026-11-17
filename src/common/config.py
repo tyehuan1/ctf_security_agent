@@ -16,7 +16,15 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[2]
 SETTINGS_PATH = ROOT / "config" / "settings.json"
-SECRET_KEYS = ("LITELLM_TOKEN",)
+SECRET_KEYS = ("LITELLM_TOKEN", "MCP_TOKEN")
+
+# How the controller handles a solver's candidate flag. Controller-side only; the solver never
+# participates (it reports a candidate through submit_flag exactly as before, and never sees any token).
+#   local  : CTFTiny scored runs -- exact-match against the answer key (verify_privately). Unchanged.
+#   manual : HTB -- no local key; capture the candidate and surface it for a human to submit. No auto-submit.
+#   auto   : HTB -- submit the candidate to HTB via the controller's MCP client; HTB scoring is the result.
+FLAG_MODES = ("local", "manual", "auto")
+HTB_FLAG_MODES = ("manual", "auto")
 
 # Configuration arms. Each is one fixed config_id="agent" configuration; they differ only in the
 # solver prompt variant and the sandbox image. The active arm is CTF_ARM (env) / the --prompt launch
@@ -38,6 +46,18 @@ def active_arm(settings_agent_version: str | None = None) -> str:
     if arm not in ARMS:
         raise ValueError(f"unknown configuration arm {arm!r}; known arms: {sorted(ARMS)}")
     return arm
+
+
+def flag_mode(settings_flag: dict | None = None) -> str:
+    """The active flag-handling mode: CTF_FLAG_MODE env, else settings.flag.mode, else 'local'.
+
+    See FLAG_MODES. 'local' keeps the frozen CTFTiny behavior; the HTB modes route the candidate
+    to the controller's HTB flag gateway instead of the local answer-key verifier.
+    """
+    mode = os.getenv("CTF_FLAG_MODE") or (settings_flag or {}).get("mode") or "local"
+    if mode not in FLAG_MODES:
+        raise ValueError(f"unknown flag mode {mode!r}; known modes: {FLAG_MODES}")
+    return mode
 
 
 def code_version() -> dict:
@@ -74,6 +94,7 @@ def load_settings(settings_path: Path = SETTINGS_PATH) -> dict:
     arm = active_arm(s.get("agent_version"))
     s["agent_version"] = arm
     s["sandbox"] = {**s.get("sandbox", {}), "image": ARMS[arm]["image"], "prompt": ARMS[arm]["prompt"]}
+    s["flag"] = {**s.get("flag", {}), "mode": flag_mode(s.get("flag"))}
     if os.getenv("LITELLM_MODEL"):
         s["model"]["name"] = os.environ["LITELLM_MODEL"]
     return s

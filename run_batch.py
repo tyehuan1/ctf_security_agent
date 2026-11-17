@@ -110,6 +110,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-attempts", type=int, default=None, help="cap attempts run by this invocation")
     ap.add_argument("--prompt", choices=sorted(config.ARMS), default=None,
                     help="configuration arm to run (sets CTF_ARM): baseline | 1.0.0 (selected) | 1.1.0")
+    ap.add_argument("--flag-mode", choices=config.FLAG_MODES, default=None,
+                    help="candidate-flag handling (sets CTF_FLAG_MODE). This batch runner is the A4 "
+                         "CTFTiny path; the HTB modes (manual/auto) run one challenge via run_attempt.py")
     ap.add_argument("--results", type=Path, default=None, help="override results path (use for non-selected arms)")
     ap.add_argument("--traces", type=Path, default=None, help="override traces dir (use for non-selected arms)")
     ap.add_argument("--max-turns", type=int, default=None,
@@ -120,7 +123,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.prompt:
         os.environ["CTF_ARM"] = a.prompt           # select the arm before settings resolve it
+    if a.flag_mode:
+        os.environ["CTF_FLAG_MODE"] = a.flag_mode
     settings = config.load_settings()
+    if settings["flag"]["mode"] in config.HTB_FLAG_MODES:
+        # This batch runner owns A4 resume/plan over results.jsonl; HTB records go to a separate
+        # htb_results.jsonl, so batch resume would not see them. Run HTB challenges one at a time.
+        raise SystemExit(f"flag mode {settings['flag']['mode']!r} is an HTB mode; run one challenge "
+                         f"with run_attempt.py CHALLENGE_ID TRIAL --flag-mode {settings['flag']['mode']}")
     if a.max_turns is not None:
         settings["budget"]["max_turns"] = a.max_turns       # run-only override; settings.json untouched
     if a.token_cap is not None:

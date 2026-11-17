@@ -55,5 +55,9 @@
     "results": "results.jsonl",
     "traces_dir": "traces",
     "runs_dir": "runs"
+  },
+  "flag": {
+    "$comment": "How the controller handles a candidate flag. local = CTFTiny scored runs (answer-key verify, frozen). manual = HTB: capture the candidate and surface it for a human to submit, no auto-submit. auto = HTB: submit via the controller MCP client. Override per run with CTF_FLAG_MODE or --flag-mode; default stays local so scored runs are untouched.",
+    "mode": "local"
   }
 }

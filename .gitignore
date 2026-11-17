@@ -234,3 +234,6 @@ traces_pilot*/
 
 # Archived evaluation runs (kept out of git; config stays frozen at tag v1.0.0)
 Evaluation Set */
+
+# Hack The Box live-run artifacts (candidates, traces, flags) -- never commit
+hackthebox_runs/

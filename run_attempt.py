@@ -41,10 +41,15 @@ def main(argv: list[str] | None = None) -> int:
                     help="tag woven into the run_id and trace filename so a run is easy to spot (e.g. arm-v1.1.0)")
     ap.add_argument("--prompt", choices=sorted(config.ARMS), default=None,
                     help="configuration arm to run (sets CTF_ARM): baseline | 1.0.0 (selected) | 1.1.0")
+    ap.add_argument("--flag-mode", choices=config.FLAG_MODES, default=None,
+                    help="how the controller handles the candidate flag (sets CTF_FLAG_MODE): "
+                         "local (CTFTiny verify) | manual (HTB: capture & surface) | auto (HTB: MCP submit)")
     a = ap.parse_args(argv)
 
     if a.prompt:
         os.environ["CTF_ARM"] = a.prompt           # select the arm before settings resolve it
+    if a.flag_mode:
+        os.environ["CTF_FLAG_MODE"] = a.flag_mode   # select flag handling before settings resolve it
     settings = config.load_settings()
     if a.dev:
         settings["data"]["dataset_json"] = settings["data"]["dev_dataset_json"]
@@ -63,7 +68,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{rec['run_id']}: {rec['status']} verified={rec['verified']} elapsed_s={rec['elapsed_s']} "
           f"input={rec['input_tokens']} output={rec['output_tokens']} cost={rec['cost_usd']}")
     print(f"trace: {rec['trace_file']}")
-    return 0 if rec["verified"] or rec["status"] in ("no_flag", "wrong_flag", "budget_exhausted", "timeout") else 1
+    ok_statuses = ("no_flag", "wrong_flag", "budget_exhausted", "timeout", "candidate")
+    return 0 if rec["verified"] or rec["status"] in ok_statuses else 1
 
 
 if __name__ == "__main__":
