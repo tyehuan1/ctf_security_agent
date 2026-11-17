@@ -65,17 +65,32 @@ class CandidateLog:
     """Surfaces and records every HTB candidate: a console block, htb_candidates.txt, and
     htb_candidates.jsonl. Never used in local mode (that path verifies privately instead)."""
 
+    # OCR-ambiguous glyph pairs a human should double-check on a render before submitting.
+    AMBIGUOUS = "i/1, 5/s, 0/o, 2/z, _/-"
+
     def __init__(self, htb_dir: Path, challenge_id: str, run_id: str, flag_mode: str,
                  *, echo: Optional[Callable[[str], None]] = print,
-                 challenge_name: Optional[str] = None):
+                 challenge_name: Optional[str] = None, workspace: Optional[Path] = None):
         self.dir = Path(htb_dir)
         self.challenge_id = challenge_id
         self.challenge_name = challenge_name or challenge_id
         self.run_id = run_id
         self.flag_mode = flag_mode
         self._echo = echo
+        # Host dir backing the solver's /workspace mount; its _verify/ holds the images the solver
+        # OCR'd. Used in manual mode only, to point the operator at them for ambiguous-glyph checks.
+        self.workspace = Path(workspace) if workspace else None
         self.txt_path = self.dir / "htb_candidates.txt"
         self.jsonl_path = self.dir / "htb_candidates.jsonl"
+
+    def _verify_files(self) -> list:
+        """Host-side absolute paths of the images the solver saved under /workspace/_verify/."""
+        if self.workspace is None:
+            return []
+        vdir = self.workspace / "_verify"
+        if not vdir.is_dir():
+            return []
+        return sorted(str(p.resolve()) for p in vdir.rglob("*") if p.is_file())
 
     def _status_line(self, submitted: bool, verified: Optional[bool], detail: str) -> str:
         if not submitted:
@@ -105,6 +120,9 @@ class CandidateLog:
                verified: Optional[bool] = None, detail: str = "") -> dict:
         reported = datetime.now().isoformat(timespec="seconds")
         self.dir.mkdir(parents=True, exist_ok=True)
+        # Manual mode only: point the operator at the exact renders the solver OCR'd so they can
+        # confirm ambiguous glyphs before submitting. Recorded in the row so the note is self-contained.
+        verify_files = self._verify_files() if self.flag_mode == "manual" else []
         rec = {
             "reported": reported,
             "run_id": self.run_id,
@@ -116,15 +134,25 @@ class CandidateLog:
             "submitted": submitted,
             "verified": verified,
             "detail": detail,
+            "verify_files": verify_files,
         }
         with self.jsonl_path.open("a", encoding="utf-8", newline="\n") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         block = self._block(candidate, reason, reported, submitted, verified, detail)
+        verify_note = self._verify_note(verify_files)
         with self.txt_path.open("a", encoding="utf-8", newline="\n") as f:
-            f.write(block + "\n\n")
+            f.write(block + verify_note + "\n\n")
         if self._echo:
-            self._echo("\n" + block)
+            self._echo("\n" + block + verify_note)
         return rec
+
+    def _verify_note(self, verify_files: list) -> str:
+        if not verify_files:
+            return ""
+        lines = [f"\n\nVerify renders (open to confirm OCR-ambiguous glyphs {self.AMBIGUOUS}):"]
+        lines += [f"  {p}" for p in verify_files]
+        lines.append("  -> open these and confirm the flag's ambiguous characters before submitting.")
+        return "\n".join(lines)
 
 
 class FlagGateway:
@@ -186,13 +214,14 @@ class AutoHTBGateway(FlagGateway):
 
 def build_gateway(mode: str, *, verify: Callable[[str], object], htb_dir: Path,
                   challenge_id: str, run_id: str, challenge_name: Optional[str] = None,
-                  submitter: Optional[FlagSubmitter] = None,
+                  submitter: Optional[FlagSubmitter] = None, workspace: Optional[Path] = None,
                   echo: Optional[Callable[[str], None]] = print) -> FlagGateway:
     """Pick the gateway for the active flag mode. ``submitter`` is injected in tests; in production
     the auto path builds the HTB MCP submitter lazily (see htb_mcp)."""
     if mode == "local":
         return LocalGateway(verify)
-    log = CandidateLog(htb_dir, challenge_id, run_id, mode, echo=echo, challenge_name=challenge_name)
+    log = CandidateLog(htb_dir, challenge_id, run_id, mode, echo=echo, challenge_name=challenge_name,
+                       workspace=workspace)
     if mode == "manual":
         return ManualHTBGateway(log)
     if mode == "auto":

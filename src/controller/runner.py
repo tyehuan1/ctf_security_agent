@@ -115,7 +115,8 @@ class Attempt:
         self.flag_mode = settings.get("flag", {}).get("mode", "local")
         self.flag_gateway = build_gateway(
             self.flag_mode, verify=self.verify_privately, htb_dir=Path(htb_dir or run_dir.parent),
-            challenge_id=challenge_id, run_id=self.run_id, challenge_name=self.chal.name)
+            challenge_id=challenge_id, run_id=self.run_id, challenge_name=self.chal.name,
+            workspace=Path(run_dir) / "workspace")   # host dir backing /workspace; its _verify/ is surfaced
         self.target = target if target is not None else Target(self.chal, self.run_id, settings, run_dir)
         self.workspace: Optional[Path] = None
         self.wrong_submissions = 0

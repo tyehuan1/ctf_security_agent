@@ -171,6 +171,7 @@ class ConfigArmTest(unittest.TestCase):
         self.assertIn("sigrok-cli", sigrok)
         self.assertIn(".sal", sigrok)
         self.assertIn("gerbv", sigrok)
+        self.assertIn("/workspace/_verify/", sigrok)   # host-visible render-saving convention
         self.assertLess(len(baseline), len(frozen))
         self.assertLess(len(frozen), len(imaging))
         self.assertLess(len(imaging), len(sigrok))

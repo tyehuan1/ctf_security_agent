@@ -63,6 +63,38 @@ class ManualGatewayTest(unittest.TestCase):
         self.assertIn("HTB{manual_flag}", "\n".join(echoed))     # surfaced to the console too
 
 
+class VerifyFolderTest(unittest.TestCase):
+    def test_manual_lists_and_records_verify_renders(self):
+        echoed = []
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as ws:
+            vdir = Path(ws) / "_verify"
+            vdir.mkdir()
+            (vdir / "B_Cu_1200dpi_rot270.png").write_bytes(b"\x89PNG")
+            log = CandidateLog(Path(tmp), "htb-pcb", "run-1", "manual", echo=echoed.append,
+                               workspace=Path(ws))
+            rec = log.record("HTB{x}", reason="read from B_Cu render")
+            self.assertEqual(len(rec["verify_files"]), 1)
+            self.assertTrue(rec["verify_files"][0].endswith("B_Cu_1200dpi_rot270.png"))
+            blob = "\n".join(echoed)
+            self.assertIn("B_Cu_1200dpi_rot270.png", blob)       # host path surfaced
+            self.assertIn("i/1, 5/s, 0/o, 2/z, _/-", blob)       # ambiguity reminder
+            rows = [json.loads(l) for l in (Path(tmp) / "htb_candidates.jsonl").read_text().splitlines()]
+            self.assertEqual(len(rows[0]["verify_files"]), 1)    # row is self-contained
+
+    def test_auto_mode_does_not_surface_verify(self):
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as ws:
+            (Path(ws) / "_verify").mkdir()
+            (Path(ws) / "_verify" / "x.png").write_bytes(b"P")
+            log = CandidateLog(Path(tmp), "c", "r", "auto", echo=lambda _: None, workspace=Path(ws))
+            rec = log.record("HTB{x}", submitted=True, verified=False)
+            self.assertEqual(rec["verify_files"], [])            # manual-mode only
+
+    def test_no_verify_dir_is_fine(self):
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as ws:
+            log = CandidateLog(Path(tmp), "c", "r", "manual", echo=lambda _: None, workspace=Path(ws))
+            self.assertEqual(log.record("HTB{x}")["verify_files"], [])
+
+
 class AutoGatewayTest(unittest.TestCase):
     def _run(self, result):
         echoed = []

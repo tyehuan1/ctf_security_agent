@@ -190,7 +190,13 @@ _HARDWARE_GUIDANCE = (
     "For PCB / gerber challenges the flag is usually printed on the board, not in the file bytes: "
     "render each gerber layer to an image with gerbv (gerbv -x png -D 600 -o layer.png <file>.gbr) "
     "and OCR it with pytesseract. Check the silkscreen and the copper layers, mirror the back (B_*) "
-    "layers before OCR (they read mirrored), and try a couple of rotations.")
+    "layers before OCR (they read mirrored), and try a couple of rotations.\n\n"
+    "Whenever you read a flag from an image with OCR (a gerber/PCB render, a stego or any visual "
+    "puzzle), save the exact image you OCR'd into /workspace/_verify/ — full resolution, in the same "
+    "rotation/orientation you read it, one clearly-named file per image (e.g. "
+    "B_Cu_1200dpi_rot270.png) — and state in your reason which /workspace/_verify/ file the flag was "
+    "read from. /workspace is saved to the host for human verification; /tmp is not, so do not leave "
+    "the image only in /tmp.")
 SIGROK_SYSTEM_PROMPT = SYSTEM_PROMPT.replace(
     _IMAGING_ANCHOR_B, "\n\n" + _HARDWARE_GUIDANCE + _IMAGING_ANCHOR_B, 1)
 
