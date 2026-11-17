@@ -25,6 +25,53 @@ PROXY_SRC = (Path(__file__).with_name("_forwarder_proxy.py")).read_text(encoding
 DEFAULT_FORWARDER_IMAGE = "ctf-solver-sandbox:v1"   # has python3 + netstat; always built
 
 
+class OfflineTarget:
+    """A Target-compatible object for a file-only challenge (no live service, no IP:PORT).
+
+    It owns only the per-attempt internal network so the solver sandbox can attach and stay
+    air-gapped; it starts no container and exposes no endpoint. The solver gets the staged files and
+    nothing to connect to, which is correct for offline crypto/rev/forensics challenges.
+    """
+
+    has_service = False
+    removed: list = []
+    compose_file = None
+
+    def __init__(self, run_id: str, settings: dict):
+        t = settings["target"]
+        self.local_host = t["local_host"]
+        self.project = project_name(t["network_prefix"], run_id)
+        self.network = self.project + "-net"
+        self.reset_id = f"fresh-{run_id}-{uuid.uuid4().hex[:8]}"
+        self.endpoint = None
+
+    def _network_exists(self, name: str) -> bool:
+        return bool(_run(["docker", "network", "ls", "-q", "--filter", f"name=^{name}$"], 30).stdout.split())
+
+    def start(self) -> None:
+        if not self._network_exists(self.network):
+            res = _run(["docker", "network", "create", "--internal", self.network], 60)
+            if res.returncode != 0:
+                raise TargetError(f"internal network create failed: {res.stderr.strip()[:300]}")
+        return None
+
+    def container_ids(self) -> list:
+        return []
+
+    def inspect_isolation(self) -> dict:
+        return {"ok": True, "violations": [], "containers": []}
+
+    def stop(self) -> dict:
+        report = {"project": self.project, "down_rc": 0, "forced_containers": []}
+        if self._network_exists(self.network):
+            _run(["docker", "network", "rm", self.network], 30)
+        report["network_removed"] = not self._network_exists(self.network)
+        report["clean"] = report["network_removed"]
+        if not report["clean"]:
+            raise TargetError(f"network {self.network} survived teardown for {self.project}")
+        return report
+
+
 class ForwarderTarget:
     """A Target-compatible object backed by a TCP forwarder to a remote ``host:port``.
 
@@ -54,6 +101,7 @@ class ForwarderTarget:
         self.listen_port = self.remote_port if self.remote_port >= 1024 else 1337
         self.reset_id = f"fresh-{run_id}-{uuid.uuid4().hex[:8]}"
         self.container_id: Optional[str] = None
+        self.endpoint: Optional[dict] = None
 
     # -- networks -----------------------------------------------------------------
     def _network_exists(self, name: str) -> bool:

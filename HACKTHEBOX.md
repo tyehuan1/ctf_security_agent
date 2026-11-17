@@ -27,6 +27,19 @@ CTFTiny run; only *where the endpoint and files come from* changes.
    The candidate flag prints as a block and is appended to `hackthebox_runs/htb_candidates.txt`
    (and `.jsonl`). **You** submit it on HTB. Done.
 
+### File-only challenge (no IP:PORT)
+
+Many challenges (crypto, rev, forensics, a logic/hardware capture) ship only files with no live
+service. **Just omit `--target`** — no forwarder is started, and the solver works from the staged
+files on an air-gapped network:
+
+```
+python run_htb.py --platform manual --flag-mode manual \
+    --files-dir "external/hackthebox/<challenge_name>" --prompt 1.1.0
+```
+
+(With no service there is no `egress_check`; there is nothing to connect to.)
+
 ## Re-pointing when the instance respawns
 
 `--target` and `--files-dir` are plain parameters — when HTB respawns the instance on a new
@@ -42,8 +55,14 @@ CTFTiny run; only *where the endpoint and files come from* changes.
 | `--max-turns` / `--token-cap` | int | Per-run budget override (frozen defaults untouched). |
 
 - **Fully offline run** (MCP down): `--platform manual --flag-mode manual` (the defaults).
+- **Fully automatic** (once MCP is wired): `--platform mcp --flag-mode auto` = enumerate/start/
+  endpoint and submit all through MCP, no human step (the candidate is still written to the files).
 - **Mixed** (once MCP is wired): `--platform mcp --flag-mode manual` = MCP gets the endpoint, you
   still submit by hand.
+
+> `mcp` and `auto` both depend on the HTB MCP client, which is a scaffold today: provide the MCP
+> server endpoint, transport, and tool names (`enumerate` / `start_instance` / `connection_info` /
+> `submit_flag`) to light them up. `manual` + `manual` needs none of that.
 
 ## Isolation guarantees (checked every run)
 

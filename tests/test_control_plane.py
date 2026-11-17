@@ -7,9 +7,13 @@ import unittest
 from pathlib import Path
 
 import tests  # noqa: F401
-from controller.control_plane import (McpControlPlane, build_control_plane, parse_target)
+from controller.control_plane import (ManualControlPlane, McpControlPlane, build_control_plane,
+                                       parse_target)
+from controller.forwarder import OfflineTarget
 from controller.htb_mcp import HTBNotWired
 from controller.manual_env import ManualChallenge, stage_manual_context
+
+SETTINGS = {"target": {"local_host": "target", "network_prefix": "ctfeval"}}
 
 
 class ParseTargetTest(unittest.TestCase):
@@ -53,9 +57,23 @@ class ManualChallengeAndStagingTest(unittest.TestCase):
 
 
 class BuildControlPlaneTest(unittest.TestCase):
-    def test_manual_requires_files_and_target(self):
+    def test_manual_requires_files_dir(self):
         with self.assertRaises(ValueError):
             build_control_plane("manual", files_dir=None, target=None)
+
+    def test_manual_file_only_uses_offline_target_and_null_endpoint(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as ws:
+            (Path(d) / "chall.bin").write_bytes(b"data")
+            cp = build_control_plane("manual", files_dir=d)     # no target => file-only
+            self.assertIsInstance(cp, ManualControlPlane)
+            chal, target, provider = cp.provision("run-x", SETTINGS)
+            self.assertIsInstance(target, OfflineTarget)
+            self.assertIs(target.has_service, False)
+            self.assertIsNone(target.endpoint)
+            ctx, inv = provider(Path(ws))                        # staging still works, target is null
+            self.assertTrue((Path(ws) / "chall.bin").exists())
+            self.assertIsNone(ctx["target"])
+            self.assertEqual([i["path"] for i in inv], ["chall.bin"])
 
     def test_manual_rejects_missing_dir(self):
         with self.assertRaises(ValueError):

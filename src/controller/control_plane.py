@@ -19,7 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
-from controller.forwarder import ForwarderTarget
+from controller.forwarder import ForwarderTarget, OfflineTarget
 from controller.htb_mcp import HTBNotWired
 from controller.manual_env import ManualChallenge, default_description, stage_manual_context
 
@@ -51,23 +51,28 @@ def _manual_context_provider(chal, challenge_id, target, description, flag_forma
 class ManualControlPlane:
     platform = "manual"
 
-    def __init__(self, files_dir, target: str, *, name: Optional[str] = None,
+    def __init__(self, files_dir, target: Optional[str] = None, *, name: Optional[str] = None,
                  category: str = "hackthebox", description: Optional[str] = None,
                  flag_format: str = "HTB{...}"):
         self.files_dir = Path(files_dir)
         if not self.files_dir.is_dir():
             raise ValueError(f"files-dir does not exist: {self.files_dir}")
         self.challenge_id = name or self.files_dir.name
-        self.remote_host, self.remote_port = parse_target(target)
+        # No target => a file-only challenge (no live service). With one, a forwarder is used.
+        self.remote = parse_target(target) if target else None
         self.category = category
         self.flag_format = flag_format
         self._description = description
 
     def provision(self, run_id: str, settings: dict) -> Provisioned:
         chal = ManualChallenge(self.challenge_id, self.files_dir, self.category)
-        target = ForwarderTarget(self.remote_host, self.remote_port, run_id, settings)
-        desc = self._description or default_description(
-            {"host": settings["target"]["local_host"], "port": target.listen_port}, self.flag_format)
+        if self.remote is None:                       # file-only: no forwarder, no endpoint
+            target = OfflineTarget(run_id, settings)
+            endpoint_hint = None
+        else:
+            target = ForwarderTarget(self.remote[0], self.remote[1], run_id, settings)
+            endpoint_hint = {"host": settings["target"]["local_host"], "port": target.listen_port}
+        desc = self._description or default_description(endpoint_hint, self.flag_format)
         provider = _manual_context_provider(chal, self.challenge_id, target, desc, self.flag_format)
         return chal, target, provider
 
@@ -98,8 +103,8 @@ class McpControlPlane:
 def build_control_plane(platform: str, *, files_dir=None, target=None, challenge_id=None,
                         name=None, description=None, flag_format="HTB{...}", mcp_client=None):
     if platform == "manual":
-        if not files_dir or not target:
-            raise ValueError("platform 'manual' requires files_dir and target (IP:PORT)")
+        if not files_dir:
+            raise ValueError("platform 'manual' requires files_dir (and target IP:PORT for a live service)")
         return ManualControlPlane(files_dir, target, name=name, description=description,
                                   flag_format=flag_format)
     if platform == "mcp":
