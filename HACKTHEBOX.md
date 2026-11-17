@@ -56,14 +56,32 @@ python run_htb.py --platform manual --flag-mode manual \
 | `--max-turns` / `--token-cap` | int | Per-run budget override (frozen defaults untouched). |
 
 - **Fully offline run** (MCP down): `--platform manual --flag-mode manual` (the defaults).
-- **Fully automatic** (once MCP is wired): `--platform mcp --flag-mode auto` = enumerate/start/
-  endpoint and submit all through MCP, no human step (the candidate is still written to the files).
-- **Mixed** (once MCP is wired): `--platform mcp --flag-mode manual` = MCP gets the endpoint, you
-  still submit by hand.
+- **Fully automatic**: `--platform mcp --flag-mode auto --challenge-id <HTB id>` = start / endpoint /
+  download / submit all through MCP, no human step (the candidate is still written to the files).
+- **Mixed**: `--platform mcp --flag-mode manual --challenge-id <HTB id>` = MCP starts + gets the
+  endpoint and files, you still submit by hand.
 
-> `mcp` and `auto` both depend on the HTB MCP client, which is a scaffold today: provide the MCP
-> server endpoint, transport, and tool names (`enumerate` / `start_instance` / `connection_info` /
-> `submit_flag`) to light them up. `manual` + `manual` needs none of that.
+## MCP mode (wired)
+
+The HTB MCP client is wired against `https://mcp.hackthebox.ai/v1/ctf/mcp/` (streamable HTTP, auth
+`Bearer $MCP_TOKEN` from `.env`). The token stays controller-side (redacted from traces, never given
+to the solver). Confirmed tools: `retrieve_ctf`, `start_container`, `stop_container`,
+`container_status`, `submit_flag`, `get_download_link`, `retrieve_ctf_scores`.
+
+```
+python run_htb.py --platform mcp --flag-mode auto --challenge-id <HTB challenge id>
+```
+
+In MCP mode the controller starts the container, reads host/port from `container_status`, downloads
+the files via `get_download_link` (controller has egress; the solver does not) and stages them, then
+the forwarder makes it reachable as `target` — same solver path as manual mode. On teardown it stops
+the HTB container.
+
+> **One-time prerequisite:** your MCP token must be *joined* to the event. Until then
+> `retrieve_ctf` / `start_container` return `403 Forbidden`. A connection check (`tools/list`) works
+> regardless. Join the event (e.g. "MCP TryOut") on the HTB site or via `join_ctf_event`, then MCP
+> mode is live. Response field names are parsed defensively — the first real `start_container` /
+> `submit_flag` responses confirm host/port and verdict fields.
 
 ## Isolation guarantees (checked every run)
 

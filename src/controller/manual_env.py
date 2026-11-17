@@ -76,6 +76,31 @@ def stage_manual_context(chal: ManualChallenge, challenge_id: str, workspace: Pa
     return context, inventory
 
 
+def download_challenge_files(url: str, dest_dir: Path) -> list:
+    """Download a challenge archive/file from a (signed) URL into dest_dir and return the staged
+    file names. The CONTROLLER does this (it has egress); the solver never sees the URL. Defensive:
+    a zip is extracted, anything else is saved under its URL basename.
+    """
+    import urllib.parse
+    import urllib.request
+    import zipfile
+
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    req = urllib.request.Request(url, headers={"User-Agent": "ctf-controller"})
+    with urllib.request.urlopen(req, timeout=60) as resp:   # noqa: S310 - controller-side, operator URL
+        blob = resp.read()
+    name = Path(urllib.parse.urlparse(url).path).name or "download.bin"
+    tmp = dest_dir / name
+    tmp.write_bytes(blob)
+    if zipfile.is_zipfile(tmp):
+        with zipfile.ZipFile(tmp) as zf:
+            safe = [m for m in zf.namelist() if not (m.startswith("/") or ".." in Path(m).parts)]
+            zf.extractall(dest_dir, members=safe)
+        tmp.unlink(missing_ok=True)
+    return sorted(p.name for p in dest_dir.iterdir() if p.is_file())
+
+
 def default_description(endpoint: Optional[dict], flag_format: str = DEFAULT_FLAG_FORMAT) -> str:
     where = (f"a live service reachable at {endpoint['host']}:{endpoint['port']} (connect with pwntools "
              "remote('target', <port>) or connect_endpoint)") if endpoint else "the provided files only"

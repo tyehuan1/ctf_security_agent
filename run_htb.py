@@ -40,6 +40,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--files-dir", type=Path, default=None, help="operator challenge files (e.g. external/hackthebox/<name>)")
     ap.add_argument("--target", default=None, help="remote challenge endpoint IP:PORT")
     ap.add_argument("--name", default=None, help="challenge id/name (default: the files-dir name)")
+    ap.add_argument("--challenge-id", default=None, help="HTB numeric challenge id (required for --platform mcp)")
     ap.add_argument("--description", default=None, help="override the challenge description shown to the solver")
     ap.add_argument("--trial", type=int, default=1)
     ap.add_argument("--prompt", choices=sorted(config.ARMS), default="1.1.0",
@@ -63,8 +64,8 @@ def main(argv: list[str] | None = None) -> int:
         settings["budget"]["attempt_token_cap"] = a.token_cap
 
     cp = build_control_plane(a.platform, files_dir=a.files_dir, target=a.target,
-                             name=a.name, description=a.description)
-    challenge_id = cp.challenge_id
+                             name=a.name, description=a.description, challenge_id=a.challenge_id)
+    challenge_id = str(cp.challenge_id)
 
     if not a.no_wait:
         wait_for_rate_window(settings)

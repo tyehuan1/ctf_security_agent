@@ -10,7 +10,6 @@ import tests  # noqa: F401
 from controller.control_plane import (ManualControlPlane, McpControlPlane, build_control_plane,
                                        parse_target)
 from controller.forwarder import OfflineTarget
-from controller.htb_mcp import HTBNotWired
 from controller.manual_env import ManualChallenge, stage_manual_context
 
 SETTINGS = {"target": {"local_host": "target", "network_prefix": "ctfeval"}}
@@ -79,11 +78,22 @@ class BuildControlPlaneTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_control_plane("manual", files_dir="does/not/exist", target="h:80")
 
-    def test_mcp_is_scaffold_and_provision_raises(self):
-        cp = build_control_plane("mcp", challenge_id="htb-x")
-        self.assertIsInstance(cp, McpControlPlane)
-        with self.assertRaises(HTBNotWired):
-            cp.provision("run-x", {"target": {"local_host": "target", "network_prefix": "ctfeval"}})
+    def test_mcp_requires_challenge_id(self):
+        with self.assertRaises(ValueError):
+            build_control_plane("mcp")
+
+    def test_mcp_provision_with_injected_client_builds_forwarder(self):
+        # A fake client avoids any network: provision reads host/port and stages (no download here).
+        class FakeClient:
+            def start_instance(self, cid): return {"status": "started"}
+            def connection_info(self, cid): return {"host": "1.2.3.4", "port": 31999}
+            def get_download_link(self, cid): return None
+            def stop_container(self, cid): return {"status": "stopped"}
+        cp = McpControlPlane("4242", client=FakeClient())
+        chal, target, provider = cp.provision("run-x", SETTINGS)
+        self.assertEqual((target.remote_host, target.remote_port), ("1.2.3.4", 31999))
+        self.assertTrue(callable(target.on_stop))            # teardown stops the HTB container
+        self.assertEqual(chal.name, "4242")
 
     def test_unknown_platform(self):
         with self.assertRaises(ValueError):

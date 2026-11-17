@@ -84,8 +84,9 @@ class ForwarderTarget:
     compose_file = None
 
     def __init__(self, remote_host: str, remote_port: int, run_id: str, settings: dict,
-                 image: Optional[str] = None):
+                 image: Optional[str] = None, on_stop=None):
         t = settings["target"]
+        self.on_stop = on_stop         # optional callback at teardown (e.g. stop the HTB container)
         self.remote_host = remote_host
         self.remote_port = int(remote_port)
         self.run_id = run_id
@@ -169,6 +170,11 @@ class ForwarderTarget:
 
     def stop(self) -> dict:
         report = {"project": self.project, "down_rc": None, "forced_containers": [], "network_removed": None}
+        if self.on_stop is not None:        # e.g. stop the remote HTB container (teardown/respawn)
+            try:
+                report["remote_stop"] = self.on_stop()
+            except Exception as err:        # teardown of our own plumbing must still proceed
+                report["remote_stop_error"] = f"{type(err).__name__}: {err}"
         leftovers = self.container_ids()
         if leftovers:
             _run(["docker", "rm", "-f", "-v", *leftovers], 60)

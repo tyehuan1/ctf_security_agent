@@ -16,12 +16,14 @@ from its start call. The solver side is identical either way.
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
 from controller.forwarder import ForwarderTarget, OfflineTarget
-from controller.htb_mcp import HTBNotWired
-from controller.manual_env import ManualChallenge, default_description, stage_manual_context
+from controller.htb_mcp import HTBNotWired, build_mcp_client
+from controller.manual_env import (ManualChallenge, default_description, download_challenge_files,
+                                   stage_manual_context)
 
 PLATFORMS = ("manual", "mcp")
 
@@ -78,25 +80,41 @@ class ManualControlPlane:
 
 
 class McpControlPlane:
-    """HTB MCP-driven control plane (scaffold). Enumerate/start/endpoint via the controller's MCP
-    client; not wired yet, so provisioning raises until the MCP client is supplied."""
+    """HTB MCP-driven control plane. The controller's MCP client starts the instance, reads its
+    connection info (host/port) for the forwarder, and downloads the challenge files (controller has
+    egress; the solver does not) which are staged the same way the manual backend stages a local dir.
+    No MCP enumerate/start is needed in manual mode; this is the automated path."""
     platform = "mcp"
 
-    def __init__(self, challenge_id: str, client=None):
-        self.challenge_id = challenge_id
+    def __init__(self, challenge_id, client=None, flag_format: str = "HTB{...}"):
+        self.challenge_id = challenge_id        # HTB numeric challenge id
         self._client = client
+        self.flag_format = flag_format
 
     def provision(self, run_id: str, settings: dict) -> Provisioned:
-        if self._client is None:
+        client = self._client or build_mcp_client()
+        if client is None:
             raise HTBNotWired(
-                "platform 'mcp' needs the HTB MCP client wired (enumerate/start/connection_info). "
-                "Run with --platform manual --files-dir <dir> --target IP:PORT for an offline run.")
-        info = self._client.start_instance(self.challenge_id)        # {host, port, ...}, once wired
-        target = ForwarderTarget(info["host"], int(info["port"]), run_id, settings)
-        # Files would come from the MCP download; reuse the manual stager against that directory.
-        chal = ManualChallenge(self.challenge_id, Path(info["files_dir"]))
-        desc = default_description({"host": settings["target"]["local_host"], "port": target.listen_port})
-        provider = _manual_context_provider(chal, self.challenge_id, target, desc, "HTB{...}")
+                "platform 'mcp' needs MCP_TOKEN in .env (controller-side). Run with --platform manual "
+                "--files-dir <dir> [--target IP:PORT] for a fully offline run.")
+        cid = self.challenge_id
+        client.start_instance(cid)                       # start the HTB container
+        info = client.connection_info(cid)               # {host, port} from container_status/start
+        if not info:
+            raise HTBNotWired(
+                f"could not read host/port from HTB for challenge {cid}. Check the raw container_status "
+                "response field names (parse_connection_info in htb_mcp is defensive on purpose).")
+        # Download the challenge files (controller egress) and stage them like a local dir.
+        files_dir = Path(tempfile.mkdtemp(prefix=f"htb-mcp-{cid}-"))
+        url = client.get_download_link(cid)
+        if url:
+            download_challenge_files(url, files_dir)
+        chal = ManualChallenge(str(cid), files_dir)
+        target = ForwarderTarget(info["host"], int(info["port"]), run_id, settings,
+                                 on_stop=lambda: client.stop_container(cid))   # teardown/respawn
+        desc = default_description(
+            {"host": settings["target"]["local_host"], "port": target.listen_port}, self.flag_format)
+        provider = _manual_context_provider(chal, str(cid), target, desc, self.flag_format)
         return chal, target, provider
 
 
@@ -108,5 +126,8 @@ def build_control_plane(platform: str, *, files_dir=None, target=None, challenge
         return ManualControlPlane(files_dir, target, name=name, description=description,
                                   flag_format=flag_format)
     if platform == "mcp":
-        return McpControlPlane(challenge_id or (name or ""), client=mcp_client)
+        cid = challenge_id or name
+        if not cid:
+            raise ValueError("platform 'mcp' requires --challenge-id (the HTB numeric challenge id)")
+        return McpControlPlane(cid, client=mcp_client, flag_format=flag_format)
     raise ValueError(f"unknown platform {platform!r}; known: {PLATFORMS}")

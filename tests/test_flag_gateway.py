@@ -103,12 +103,20 @@ class BuildGatewayTest(unittest.TestCase):
 
 
 class HtbMcpScaffoldTest(unittest.TestCase):
-    def test_default_submitter_is_not_wired_and_raises_clearly(self):
-        sub = build_default_submitter("htb-example")
-        self.assertIsInstance(sub, HTBMcpSubmitter)
-        self.assertFalse(sub.ready())
-        with self.assertRaises(HTBNotWired):
-            sub.submit("HTB{x}")
+    def test_default_submitter_tracks_token_presence(self):
+        import controller.htb_mcp as mod
+        orig = mod.config.secret
+        try:
+            mod.config.secret = lambda name: None                 # no MCP_TOKEN
+            sub = build_default_submitter("htb-example")
+            self.assertIsInstance(sub, HTBMcpSubmitter)
+            self.assertFalse(sub.ready())                         # unwired -> manual path still works
+            with self.assertRaises(HTBNotWired):
+                sub.submit("HTB{x}")
+            mod.config.secret = lambda name: "tok"                # token present
+            self.assertTrue(build_default_submitter("htb-example").ready())
+        finally:
+            mod.config.secret = orig
 
     def test_interpret_common_response_shapes(self):
         self.assertEqual(interpret_submit_response({"correct": True, "message": "Solved"}).verified, True)
