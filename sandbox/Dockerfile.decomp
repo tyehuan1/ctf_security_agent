@@ -1,0 +1,80 @@
+# CTF solver sandbox image — DECOMPILER ARM (agent_version 2.3.0).
+#
+# v2.2 (broad tooling, ctf-solver-sandbox:v2.2) plus a Ghidra-based decompiler integrated into the
+# radare2 the agent already uses, callable as `pdg` (r2ghidra). This collapses large/C++ ARM
+# disassembly into compact C-like pseudocode so the agent stops burning its token budget re-paging
+# raw instructions. Reached through the existing five tools (run_shell/python_exec invoke r2); no new
+# tool, no interface change, no isolation change.
+#
+# NOTE: the v2.2 radare2 comes from the radareorg release .deb, which ships NO pkg-config .pc files,
+# so r2ghidra cannot build against it ("checking pkg-config flags for r_core... no"). The documented
+# fix is to build radare2 from source (its install lays down the r_*.pc files r2ghidra's configure
+# needs), then install r2ghidra from source via r2pm. r2ghidra is installed as the `solver` user so
+# `pdg` is on that user's plugin path at run time. During the build we cross-compile a tiny ARM test
+# binary and run `pdg` on it to (a) verify the decompiler emits pseudocode and (b) pre-warm/cache the
+# ARM SLEIGH so the first run in the read-only runtime sandbox needs no cache write. Earlier arms are
+# untouched; this builds a separate tag.
+#
+# Build:  docker build -f sandbox/Dockerfile.decomp -t ctf-solver-sandbox:v2.3 sandbox/
+FROM ctf-solver-sandbox:v2.2
+
+ENV DEBIAN_FRONTEND=noninteractive
+USER root
+
+# Build toolchain: meson/ninja/cmake/g++ for radare2 + r2ghidra; an ARM cross-compiler for the tiny
+# verification/pre-warm binary.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        cmake make gcc g++ pkg-config git meson ninja-build patch \
+        gcc-arm-linux-gnueabihf libc6-dev-armhf-cross \
+    && rm -rf /var/lib/apt/lists/*
+
+# Tiny ARM ELF for the build-time pdg verification + SLEIGH pre-warm (kept for later manual checks).
+RUN printf '%s\n' \
+    'int transform(int a, int b){ int r = a * b; if (r > 10) r += 7; return r ^ 0x5a; }' \
+    'int main(void){ volatile int x = transform(3, 4); return x; }' > /tmp/arm_test.c \
+    && arm-linux-gnueabihf-gcc -O0 -o /opt/arm_test /tmp/arm_test.c \
+    && rm -f /tmp/arm_test.c \
+    && chown solver:solver /opt/arm_test
+
+# Replace the .deb radare2 with a source build so r2 ships the pkg-config .pc files r2ghidra needs.
+# Use an explicit `make install` (a real copy install) rather than sys/install.sh, which does a
+# SYMLINK install into the build tree — removing the tree would then break r2. Verify r2 + r_core.pc
+# AFTER deleting the source tree so a symlink install would fail the build here, not silently later.
+RUN apt-get purge -y radare2 || true \
+    && git clone --depth 1 https://github.com/radareorg/radare2 /tmp/radare2 \
+    && cd /tmp/radare2 \
+    && ./configure --prefix=/usr \
+    && make -j"$(nproc)" \
+    && make install \
+    && ldconfig \
+    && cd / && rm -rf /tmp/radare2 \
+    && r2 -v \
+    && pkg-config --exists r_core && echo "r_core.pc OK"
+
+# Build + install r2ghidra from source (acr/make; the source radare2 above provides the pkg-config
+# files it needs). Installs the `pdg` plugin + compiled SLEIGH into r2's SYSTEM dirs, so every user
+# (the solver at run time) loads it; no r2pm, no per-user path. Only the x86/ARM/AARCH64 SLEIGH are
+# built (ghidra-processors.txt.x86arm) instead of all 28 processors — these challenges are ARM, and
+# this keeps the build fast and the image small. preconfigure fetches the ghidra-native sources.
+RUN git clone https://github.com/radareorg/r2ghidra /tmp/r2ghidra \
+    && cd /tmp/r2ghidra \
+    && ./preconfigure \
+    && ./configure --prefix=/usr \
+    && cp -f ghidra-processors.txt.x86arm ghidra-processors.txt \
+    && touch ghidra-processors.txt \
+    && make -j"$(nproc)" \
+    && make install \
+    && cd / && rm -rf /tmp/r2ghidra
+
+# Verify pdg works on ARM and pre-warm any SLEIGH cache (fail the build on no pseudocode). Run as the
+# solver user so a per-user cache (if any) is baked where the read-only runtime can read it.
+USER solver
+ENV HOME=/home/solver
+RUN out=$(r2 -e scr.color=0 -A -qc 'pdg @ main' /opt/arm_test 2>&1) \
+    && printf '%s\n' "$out" | head -40 \
+    && printf '%s\n' "$out" | grep -qE 'return|int |undefined|;' \
+        || { echo "ERROR: r2ghidra pdg produced no pseudocode on ARM test binary" >&2; exit 1; }
+
+USER solver
+WORKDIR /workspace
+CMD ["sleep", "infinity"]

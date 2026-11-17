@@ -137,7 +137,9 @@ class ConfigArmTest(unittest.TestCase):
                                     ("1.1.0", "imaging", "ctf-solver-sandbox:v1.1"),
                                     ("2.1.0", "sigrok", "ctf-solver-sandbox:v2.1"),
                                     ("2.2.0", "tools", "ctf-solver-sandbox:v2.2"),
-                                    ("2.2.0-sonnet", "tools", "ctf-solver-sandbox:v2.2")]:
+                                    ("2.2.0-sonnet", "tools", "ctf-solver-sandbox:v2.2"),
+                                    ("2.3.0", "decomp", "ctf-solver-sandbox:v2.3"),
+                                    ("2.3.0-sonnet", "decomp", "ctf-solver-sandbox:v2.3")]:
             os.environ["CTF_ARM"] = arm
             s = config.load_settings()
             self.assertEqual(s["agent_version"], arm)
@@ -184,6 +186,7 @@ class ConfigArmTest(unittest.TestCase):
         imaging = build_system_prompt("imaging")
         sigrok = build_system_prompt("sigrok")
         tools = build_system_prompt("tools")
+        decomp = build_system_prompt("decomp")
         # baseline (pre-improvement): no reasoning block, no run-and-interact block, no imaging
         self.assertNotIn("Reason before you act", baseline)
         self.assertNotIn("run the program", baseline)
@@ -213,10 +216,17 @@ class ConfigArmTest(unittest.TestCase):
         self.assertIn("radare2", tools)                # reversing
         self.assertIn("z3", tools)                     # crypto
         self.assertIn("tshark", tools)                 # forensics
+        self.assertNotIn("decompiled pseudocode", tools)  # the reversing block is v2.3.0 only
+        # decomp (v2.3.0): tools superset plus the scoped reversing/decompiler-workflow block
+        self.assertIn("libc-find", decomp)             # inherits the broad tooling
+        self.assertIn("decompiled pseudocode", decomp) # prefer pdg/Ghidra over raw disassembly
+        self.assertIn("pdg", decomp)
+        self.assertIn("map the whole path", decomp)    # map auth -> gate -> sink before deep-reversing
         self.assertLess(len(baseline), len(frozen))
         self.assertLess(len(frozen), len(imaging))
         self.assertLess(len(imaging), len(sigrok))
         self.assertLess(len(sigrok), len(tools))
+        self.assertLess(len(tools), len(decomp))
 
 
 class ExtractCandidateTest(unittest.TestCase):

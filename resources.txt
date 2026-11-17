@@ -21,10 +21,21 @@ Sandbox images (built from sandbox/; recorded with `docker image inspect --forma
                            v1.1 + sigrok-cli 0.7.2 + libsigrokdecode4 (uart/spi/i2c decoders),
                            gerbv (render PCB gerbers for OCR), and unzip
   ctf-solver-sandbox:v2.2  sha256:0cfdddcdc0f162ae27e7e9f0bef8cd988b8a249e7769e82dbb68c0b6f8429fd1
-                           sandbox/Dockerfile.tools — broad-tooling arm (v2.2.0), default for HTB runs:
+                           sandbox/Dockerfile.tools — broad-tooling arm (v2.2.0):
                            v2.1 + radare2 6.2.6 (GitHub release .deb; not in Debian trixie), z3-solver,
                            beautifulsoup4, tshark, foremost, and libc-database seeded offline with
                            Ubuntu libc6 2.23/2.27/2.31/2.35/2.39 (exposed as libc-find / libc-id)
+  ctf-solver-sandbox:v2.3  sha256:4de3c0b00c15e501beba0e12b59e78648d471d79d51540b5d7e6be97a7b1ea23
+                           sandbox/Dockerfile.decomp — decompiler arm (v2.3.0), default for HTB runs:
+                           v2.2 + a Ghidra-based decompiler integrated into radare2 as `pdg` (r2ghidra,
+                           built from source via acr/make). The .deb radare2 ships no pkg-config files,
+                           so r2 is rebuilt from source (radareorg/radare2 6.2.7, prefix /usr) to supply
+                           them; r2ghidra is then built with ghidra-processors.txt.x86arm — only the
+                           x86 / ARM / AARCH64 SLEIGH (prebuilt .sla installed to
+                           /usr/lib/radare2/6.2.7/r2ghidra_sleigh, so pdg needs no cache write under the
+                           read-only runtime). Verified at build + runtime: `r2 -e scr.color=0 -A -qc
+                           'pdg @ main' <armbin>` emits C-like pseudocode. ~2.44 GB (vs 1.6 GB v2.2;
+                           lighter than full Ghidra+JRE). Pairs with the `decomp` prompt variant.
 
 Windows checkout notes (content is unchanged; only on-disk layout differs)
   - Repo-local git config: core.protectNTFS=false, core.autocrlf=false, core.eol=lf, core.longpaths=true

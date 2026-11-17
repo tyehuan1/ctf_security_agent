@@ -37,17 +37,21 @@ HTB_FLAG_MODES = ("manual", "auto")
 # frozen behavior of each arm is never changed. "1.0.0" is the selected CTFTiny configuration;
 # "baseline" is the pre-improvement prompt for comparison; "1.1.0" adds imaging+OCR; "2.1.0" adds
 # sigrok logic-analyzer + gerbv; "2.2.0" adds broad challenge tooling (radare2, z3, tshark, foremost,
-# libc-database, ...) and is the default (Haiku 5.5, from settings) for HTB runs (run_htb.py).
-# "2.2.0-sonnet" is the HTB escalation/backup arm: byte-identical sandbox and prompt as 2.2.0, but
-# the model is pinned to Claude Sonnet 5.5 for the harder challenges Haiku can't crack. CTFTiny's
-# scored default stays "1.0.0". An arm with no "model" key runs on settings.model.name (Haiku).
+# libc-database, ...). "2.3.0" adds a Ghidra-based decompiler (r2ghidra, callable as `pdg` inside
+# radare2) plus a scoped reversing/analysis-workflow prompt block, and is the default (Haiku 5.5,
+# from settings) for HTB runs (run_htb.py). The "-sonnet" arms are HTB escalation/backup arms:
+# byte-identical sandbox and prompt as their base, but the model is pinned to Claude Sonnet 5.5 for
+# the harder challenges Haiku can't crack. CTFTiny's scored default stays "1.0.0". An arm with no
+# "model" key runs on settings.model.name (Haiku).
 ARMS = {
     "baseline":     {"image": "ctf-solver-sandbox:v1",   "prompt": "baseline"},
     "1.0.0":        {"image": "ctf-solver-sandbox:v1",   "prompt": "frozen"},
     "1.1.0":        {"image": "ctf-solver-sandbox:v1.1", "prompt": "imaging"},
     "2.1.0":        {"image": "ctf-solver-sandbox:v2.1", "prompt": "sigrok"},
     "2.2.0":        {"image": "ctf-solver-sandbox:v2.2", "prompt": "tools"},
-    "2.2.0-sonnet": {"image": "ctf-solver-sandbox:v2.2", "prompt": "tools", "model": "claude-sonnet-5-5"},
+    "2.2.0-sonnet": {"image": "ctf-solver-sandbox:v2.2", "prompt": "tools",  "model": "claude-sonnet-5-5"},
+    "2.3.0":        {"image": "ctf-solver-sandbox:v2.3", "prompt": "decomp"},
+    "2.3.0-sonnet": {"image": "ctf-solver-sandbox:v2.3", "prompt": "decomp", "model": "claude-sonnet-5-5"},
 }
 
 # Fallback per-token rates (USD per 1M tokens), used only when the gateway omits the
