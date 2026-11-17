@@ -27,18 +27,31 @@ FLAG_MODES = ("local", "manual", "auto")
 HTB_FLAG_MODES = ("manual", "auto")
 
 # Configuration arms. Each is one fixed config_id="agent" configuration; they differ only in the
-# solver prompt variant and the sandbox image. The active arm is CTF_ARM (env) / the --prompt launch
-# flag if set, else config/settings.json's agent_version. The frozen behavior of each arm is never
-# changed. "1.0.0" is the selected CTFTiny configuration; "baseline" is the pre-improvement prompt
-# for comparison; "1.1.0" adds imaging+OCR; "2.1.0" adds sigrok logic-analyzer + gerbv; "2.2.0" adds
-# broad challenge tooling (radare2, z3, tshark, foremost, libc-database, ...) and is the default for
-# HTB runs (run_htb.py). CTFTiny's scored default stays "1.0.0".
+# solver prompt variant, the sandbox image, and (optionally) a pinned model. The active arm is
+# CTF_ARM (env) / the --prompt launch flag if set, else config/settings.json's agent_version. The
+# frozen behavior of each arm is never changed. "1.0.0" is the selected CTFTiny configuration;
+# "baseline" is the pre-improvement prompt for comparison; "1.1.0" adds imaging+OCR; "2.1.0" adds
+# sigrok logic-analyzer + gerbv; "2.2.0" adds broad challenge tooling (radare2, z3, tshark, foremost,
+# libc-database, ...) and is the default (Haiku 5.5, from settings) for HTB runs (run_htb.py).
+# "2.2.0-sonnet" is the HTB escalation/backup arm: byte-identical sandbox and prompt as 2.2.0, but
+# the model is pinned to Claude Sonnet 5.5 for the harder challenges Haiku can't crack. CTFTiny's
+# scored default stays "1.0.0". An arm with no "model" key runs on settings.model.name (Haiku).
 ARMS = {
-    "baseline": {"image": "ctf-solver-sandbox:v1",   "prompt": "baseline"},
-    "1.0.0":    {"image": "ctf-solver-sandbox:v1",   "prompt": "frozen"},
-    "1.1.0":    {"image": "ctf-solver-sandbox:v1.1", "prompt": "imaging"},
-    "2.1.0":    {"image": "ctf-solver-sandbox:v2.1", "prompt": "sigrok"},
-    "2.2.0":    {"image": "ctf-solver-sandbox:v2.2", "prompt": "tools"},
+    "baseline":     {"image": "ctf-solver-sandbox:v1",   "prompt": "baseline"},
+    "1.0.0":        {"image": "ctf-solver-sandbox:v1",   "prompt": "frozen"},
+    "1.1.0":        {"image": "ctf-solver-sandbox:v1.1", "prompt": "imaging"},
+    "2.1.0":        {"image": "ctf-solver-sandbox:v2.1", "prompt": "sigrok"},
+    "2.2.0":        {"image": "ctf-solver-sandbox:v2.2", "prompt": "tools"},
+    "2.2.0-sonnet": {"image": "ctf-solver-sandbox:v2.2", "prompt": "tools", "model": "claude-sonnet-5-5"},
+}
+
+# Fallback per-token rates (USD per 1M tokens), used only when the gateway omits the
+# x-litellm-response-cost header (see common/usage.py). First-party Anthropic list prices; a gateway
+# may bill differently, so the cost header always wins. load_settings selects the entry matching the
+# resolved model name so the Sonnet backup arm is costed at Sonnet rates, not Haiku's.
+MODEL_PRICING = {
+    "claude-haiku-5-5":  {"input_per_m": 0.10, "cached_input_per_m": 0.01, "output_per_m": 0.50},
+    "claude-sonnet-5-5": {"input_per_m": 2.00, "cached_input_per_m": 0.10, "output_per_m": 10.00},
 }
 
 
@@ -99,8 +112,16 @@ def load_settings(settings_path: Path = SETTINGS_PATH) -> dict:
     s["agent_version"] = arm
     s["sandbox"] = {**s.get("sandbox", {}), "image": ARMS[arm]["image"], "prompt": ARMS[arm]["prompt"]}
     s["flag"] = {**s.get("flag", {}), "mode": flag_mode(s.get("flag"))}
+    # Model routing: an arm may pin a model (e.g. the Sonnet 5.5 backup arm); otherwise the
+    # settings.json model (Haiku 5.5) is the default. An explicit LITELLM_MODEL env always wins last.
+    if ARMS[arm].get("model"):
+        s["model"] = {**s["model"], "name": ARMS[arm]["model"]}
     if os.getenv("LITELLM_MODEL"):
         s["model"]["name"] = os.environ["LITELLM_MODEL"]
+    # Cost-accounting fallback: price the resolved model correctly when the gateway omits the cost
+    # header. Known rates win over any stale pricing block in settings.json.
+    if s["model"]["name"] in MODEL_PRICING:
+        s["model"]["pricing"] = {**s["model"].get("pricing", {}), **MODEL_PRICING[s["model"]["name"]]}
     return s
 
 

@@ -119,12 +119,13 @@ class McpControlPlane:
 
 
 def build_control_plane(platform: str, *, files_dir=None, target=None, challenge_id=None,
-                        name=None, description=None, flag_format="HTB{...}", mcp_client=None):
+                        name=None, description=None, flag_format="HTB{...}", category="hackthebox",
+                        mcp_client=None):
     if platform == "manual":
         if not files_dir:
             raise ValueError("platform 'manual' requires files_dir (and target IP:PORT for a live service)")
-        return ManualControlPlane(files_dir, target, name=name, description=description,
-                                  flag_format=flag_format)
+        return ManualControlPlane(files_dir, target, name=name, category=category or "hackthebox",
+                                  description=description, flag_format=flag_format)
     if platform == "mcp":
         cid = challenge_id or name
         if not cid:

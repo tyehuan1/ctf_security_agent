@@ -11,22 +11,57 @@ CTFTiny run; only *where the endpoint and files come from* changes.
 1. **Download the challenge files** into their own folder under `external/hackthebox/`:
 
    ```
-   external/hackthebox/<challenge_name>/   <- put all provided files here (flat)
+   external/hackthebox/<challenge_name>/   <- put all provided files here (nested dirs are fine)
    ```
 
 2. **Spawn the HTB instance** and note its `IP:PORT` (e.g. `154.57.164.83:31763`).
 
-3. **Run it:**
+3. **Run it (Haiku first — cheap):**
 
    ```
    python run_htb.py --platform manual --flag-mode manual \
        --files-dir "external/hackthebox/<challenge_name>" \
+       --category <pwn|rev|crypto|web|stego|hardware|misc> \
        --target <IP>:<PORT>
    ```
 
-   (Arm **2.1.0** (imaging+OCR + sigrok logic-analyzer decoding) is the default for every HTB run;
-   pass `--prompt <arm>` only to override.) The candidate flag prints as a block and is appended to `hackthebox_runs/htb_candidates.txt`
-   (and `.jsonl`). **You** submit it on HTB. Done.
+   Arm **2.2.0** (Claude Haiku 5.5 + full tooling) is the default. `--category` sets the per-attempt
+   allowance (pwn/rev → 40 turns, others → 30; see below). The candidate flag prints as a block and
+   is appended to `hackthebox_runs/htb_candidates.txt` (and `.jsonl`). **You** submit it on HTB.
+
+   The run prints a header line confirming what it's using, e.g.
+   `arm=2.2.0 model=claude-haiku-5-5 category='pwn' (long (pwn/rev) budget: 40 turns, 1200s, 600,000 tokens)`.
+
+## Model routing — escalate a stuck challenge to Sonnet
+
+Run every challenge on **Haiku 5.5 first** (the default, ~$0.02/attempt). A failed Haiku pass is
+nearly free, so escalate to **Claude Sonnet 5.5** only on the ones Haiku can't crack — same sandbox,
+same prompt, same five tools, stronger model (~$0.35–0.9/attempt):
+
+```
+python run_htb.py --platform manual --flag-mode manual \
+    --files-dir "external/hackthebox/<challenge_name>" \
+    --category <cat> --target <IP>:<PORT> \
+    --prompt 2.2.0-sonnet
+```
+
+That's the whole routing workflow: **default = Haiku, backup arm = `2.2.0-sonnet`.** No image
+rebuild — the Sonnet arm reuses `ctf-solver-sandbox:v2.2`; only the model id changes, controller-side.
+Cost accounting prices the run at Sonnet rates automatically (the `cost_usd` in `htb_results.jsonl`
+is correct for whichever model ran).
+
+## Selective turn / timeout bump (per category)
+
+`--category` picks the per-attempt budget (HTB runs only — the scored CTFTiny path is untouched):
+
+| Category | Turns | Deadline | Token cap |
+|---|---|---|---|
+| `pwn`, `rev`/`reversing` | **40** | 20 min | 600K |
+| everything else (`crypto`, `web`, `stego`, `hardware`, `misc`, …) | **30** | 15 min | 450K |
+
+pwn and reversing exhaust their budget far more often (measured on Eval Set 3), so they get the
+longer allowance; leaner categories save budget. `--max-turns`, `--deadline-s`, and `--token-cap`
+each override the matching field when you pass them explicitly.
 
 ### File-only challenge (no IP:PORT)
 
@@ -50,10 +85,11 @@ python run_htb.py --platform manual --flag-mode manual \
 
 | Flag | Values | Meaning |
 |---|---|---|
-| `--platform` | `manual` (default) · `mcp` | Where the endpoint/files come from. `manual` = your `--files-dir` + `--target`, zero MCP calls. `mcp` = HTB MCP client (scaffold; not wired yet). |
-| `--flag-mode` | `manual` (default) · `auto` | `manual` = surface the candidate for you to submit. `auto` = submit via the controller MCP client (scaffold; needs the HTB MCP submit tool wired). |
-| `--prompt` | `2.1.0` (default) · `1.1.0` · `1.0.0` · `baseline` | Solver arm. **Every HTB run defaults to `2.1.0`** (imaging+OCR + sigrok logic-analyzer decoding, image `ctf-solver-sandbox:v2.1`); pass this only to override. |
-| `--max-turns` / `--token-cap` | int | Per-run budget override (frozen defaults untouched). |
+| `--platform` | `manual` (default) · `mcp` | Where the endpoint/files come from. `manual` = your `--files-dir` + `--target`, zero MCP calls. `mcp` = HTB MCP client (wired; needs the token joined to the event). |
+| `--flag-mode` | `manual` (default) · `auto` | `manual` = surface the candidate for you to submit. `auto` = submit via the controller MCP client. |
+| `--prompt` | `2.2.0` (default, Haiku 5.5) · `2.2.0-sonnet` (backup, Sonnet 5.5) · `2.1.0` · `1.1.0` · `1.0.0` · `baseline` | Solver arm. **Default `2.2.0`** = Haiku 5.5 + full tooling (image `ctf-solver-sandbox:v2.2`). **`2.2.0-sonnet`** = the escalation arm (same sandbox/prompt, Sonnet 5.5). |
+| `--category` | `pwn` · `rev` · `crypto` · `web` · `stego` · `hardware` · `misc` · … | Sets the per-attempt turn/timeout/token allowance (pwn/rev get the long tier). Default `hackthebox` → the lean tier. |
+| `--max-turns` / `--deadline-s` / `--token-cap` | int | Per-run budget override; wins over the per-category default. Frozen scored-path defaults untouched. |
 
 - **Fully offline run** (MCP down): `--platform manual --flag-mode manual` (the defaults).
 - **Fully automatic**: `--platform mcp --flag-mode auto --challenge-id <HTB id>` = start / endpoint /
@@ -82,6 +118,26 @@ the HTB container.
 > regardless. Join the event (e.g. "MCP TryOut") on the HTB site or via `join_ctf_event`, then MCP
 > mode is live. Response field names are parsed defensively — the first real `start_container` /
 > `submit_flag` responses confirm host/port and verdict fields.
+
+## Competition setup & budget ($25 key)
+
+Before game day:
+
+1. **Point the controller at the competition endpoint.** The model API base URL lives in
+   `config/settings.json` (`model.base_url`); the token lives in `.env` as `LITELLM_TOKEN` (secret,
+   redacted from traces, never given to the solver). Set both to the key/endpoint you were issued.
+2. **Confirm both models are served** by that endpoint: `claude-haiku-5-5` (default) and
+   `claude-sonnet-5-5` (backup arm). If the gateway uses different ids, set `LITELLM_MODEL` to
+   override, or tell me and I'll repoint the `2.2.0-sonnet` arm.
+3. **Budget math (measured on Eval Set 3).** Haiku ≈ **$0.02/attempt**; Sonnet ≈ **$0.34/attempt**
+   at 30 turns, **~$0.45–0.52** at 40 turns (pwn/rev). A sane $25 plan: run all 10 on Haiku first
+   (~$0.20 total), then escalate the ~3–5 hardest to Sonnet with a couple of retries each
+   (~$7–15). That leaves comfortable headroom. The per-attempt `attempt_token_cap` is the hard
+   guardrail so no single run can drain the key.
+4. **Cost tracking.** Every run records `cost_usd` in `hackthebox_runs/htb_results.jsonl`, priced
+   from the gateway's cost header when present (else the first-party Anthropic fallback rates, which
+   are model-correct). Sum that column to watch spend:
+   `python -c "import json;print(sum(json.loads(l)['cost_usd'] or 0 for l in open('hackthebox_runs/htb_results.jsonl')))"`.
 
 ## Isolation guarantees (checked every run)
 

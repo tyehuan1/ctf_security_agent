@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 import tests  # noqa: F401
+from controller.budget import htb_budget_defaults, htb_is_long_category
 from controller.control_plane import (ManualControlPlane, McpControlPlane, build_control_plane,
                                        parse_target)
 from controller.forwarder import OfflineTarget
@@ -93,6 +94,16 @@ class BuildControlPlaneTest(unittest.TestCase):
             self.assertIsNone(ctx["target"])
             self.assertEqual([i["path"] for i in inv], ["chall.bin"])
 
+    def test_manual_category_threads_into_challenge_and_context(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as ws:
+            (Path(d) / "chall.bin").write_bytes(b"data")
+            cp = build_control_plane("manual", files_dir=d, category="pwn")
+            self.assertEqual(cp.category, "pwn")
+            chal, target, provider = cp.provision("run-x", SETTINGS)
+            self.assertEqual(chal.category, "pwn")
+            ctx, _ = provider(Path(ws))
+            self.assertEqual(ctx["category"], "pwn")
+
     def test_manual_rejects_missing_dir(self):
         with self.assertRaises(ValueError):
             build_control_plane("manual", files_dir="does/not/exist", target="h:80")
@@ -117,6 +128,31 @@ class BuildControlPlaneTest(unittest.TestCase):
     def test_unknown_platform(self):
         with self.assertRaises(ValueError):
             build_control_plane("bogus")
+
+
+class HtbSelectiveBudgetTest(unittest.TestCase):
+    """HTB-only per-category turn/timeout/token policy (run_htb.py). Never touches the scored path."""
+
+    def test_pwn_and_reversing_get_the_long_allowance(self):
+        for cat in ("pwn", "rev", "reversing", "RE", "  Pwn  "):
+            self.assertTrue(htb_is_long_category(cat), cat)
+            d = htb_budget_defaults(cat)
+            self.assertEqual(d["max_turns"], 40)
+            self.assertEqual(d["attempt_deadline_s"], 1200)
+            self.assertEqual(d["attempt_token_cap"], 600000)
+
+    def test_other_categories_stay_lean(self):
+        for cat in ("crypto", "web", "stego", "hardware", "misc", "hackthebox", None, ""):
+            self.assertFalse(htb_is_long_category(cat), cat)
+            d = htb_budget_defaults(cat)
+            self.assertEqual(d["max_turns"], 30)
+            self.assertEqual(d["attempt_deadline_s"], 900)
+            self.assertEqual(d["attempt_token_cap"], 450000)
+
+    def test_defaults_are_independent_copies(self):
+        a = htb_budget_defaults("pwn")
+        a["max_turns"] = 1
+        self.assertEqual(htb_budget_defaults("pwn")["max_turns"], 40)
 
 
 if __name__ == "__main__":

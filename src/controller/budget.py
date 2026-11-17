@@ -10,6 +10,32 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Optional
 
+# ---------------------------------------------------------------------------
+# HTB-only selective budget policy (run_htb.py). Never applied to the frozen CTFTiny scored path
+# (run_batch.py / run_attempt.py), whose budget stays exactly config/settings.json. These are the
+# per-category defaults an HTB run uses when the operator does not pass an explicit --max-turns /
+# --deadline-s / --token-cap override. Reversing and pwn exhaust turns far more often than the other
+# categories (measured on Eval Set 3), so they get the longer turn/time/token allowance; everything
+# else stays leaner to save budget. Any explicit CLI flag still overrides the matching field.
+# ---------------------------------------------------------------------------
+HTB_LONG_TURN_CATEGORIES = frozenset({"pwn", "rev", "reversing", "re"})
+_HTB_LONG = {"max_turns": 40, "attempt_deadline_s": 1200, "attempt_token_cap": 600000}
+_HTB_DEFAULT = {"max_turns": 30, "attempt_deadline_s": 900, "attempt_token_cap": 450000}
+
+
+def htb_is_long_category(category: Optional[str]) -> bool:
+    """True for the pwn/reversing categories that warrant the longer per-attempt allowance."""
+    return (category or "").strip().lower() in HTB_LONG_TURN_CATEGORIES
+
+
+def htb_budget_defaults(category: Optional[str]) -> dict:
+    """Per-category HTB budget defaults (max_turns / attempt_deadline_s / attempt_token_cap).
+
+    pwn & reversing -> 40 turns, 20 min, 600K tokens; all other categories -> 30 turns, 15 min,
+    450K tokens. HTB runs only; the scored CTFTiny path is unaffected.
+    """
+    return dict(_HTB_LONG if htb_is_long_category(category) else _HTB_DEFAULT)
+
 
 @dataclass(frozen=True)
 class Budget:

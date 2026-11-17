@@ -136,12 +136,41 @@ class ConfigArmTest(unittest.TestCase):
                                     ("1.0.0", "frozen", "ctf-solver-sandbox:v1"),
                                     ("1.1.0", "imaging", "ctf-solver-sandbox:v1.1"),
                                     ("2.1.0", "sigrok", "ctf-solver-sandbox:v2.1"),
-                                    ("2.2.0", "tools", "ctf-solver-sandbox:v2.2")]:
+                                    ("2.2.0", "tools", "ctf-solver-sandbox:v2.2"),
+                                    ("2.2.0-sonnet", "tools", "ctf-solver-sandbox:v2.2")]:
             os.environ["CTF_ARM"] = arm
             s = config.load_settings()
             self.assertEqual(s["agent_version"], arm)
             self.assertEqual(s["sandbox"]["image"], image)
             self.assertEqual(s["sandbox"]["prompt"], variant)
+
+    def test_model_routing_default_is_haiku_backup_is_sonnet(self):
+        # Default HTB arm runs on the settings model (Haiku 5.5); only the backup arm pins Sonnet.
+        os.environ["CTF_ARM"] = "2.2.0"
+        default = config.load_settings()
+        self.assertEqual(default["model"]["name"], "claude-haiku-5-5")
+        self.assertAlmostEqual(default["model"]["pricing"]["output_per_m"], 0.50)
+
+        os.environ["CTF_ARM"] = "2.2.0-sonnet"
+        backup = config.load_settings()
+        self.assertEqual(backup["model"]["name"], "claude-sonnet-5-5")
+        # Sonnet is priced at Sonnet rates for the cost-header fallback, not Haiku's.
+        self.assertAlmostEqual(backup["model"]["pricing"]["input_per_m"], 2.00)
+        self.assertAlmostEqual(backup["model"]["pricing"]["cached_input_per_m"], 0.10)
+        self.assertAlmostEqual(backup["model"]["pricing"]["output_per_m"], 10.00)
+        # The backup arm changes only the model: sandbox image and prompt match the default arm.
+        self.assertEqual(backup["sandbox"]["image"], "ctf-solver-sandbox:v2.2")
+        self.assertEqual(backup["sandbox"]["prompt"], "tools")
+
+    def test_litellm_model_env_overrides_arm_model(self):
+        os.environ["CTF_ARM"] = "2.2.0-sonnet"
+        os.environ["LITELLM_MODEL"] = "claude-haiku-5-5"
+        try:
+            s = config.load_settings()
+            self.assertEqual(s["model"]["name"], "claude-haiku-5-5")
+            self.assertAlmostEqual(s["model"]["pricing"]["output_per_m"], 0.50)
+        finally:
+            os.environ.pop("LITELLM_MODEL", None)
 
     def test_unknown_arm_rejected(self):
         os.environ["CTF_ARM"] = "9.9.9"
