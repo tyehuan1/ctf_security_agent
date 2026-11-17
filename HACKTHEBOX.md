@@ -21,10 +21,11 @@ CTFTiny run; only *where the endpoint and files come from* changes.
    ```
    python run_htb.py --platform manual --flag-mode manual \
        --files-dir "external/hackthebox/<challenge_name>" \
-       --target <IP>:<PORT> --prompt 1.1.0
+       --target <IP>:<PORT>
    ```
 
-   The candidate flag prints as a block and is appended to `hackthebox_runs/htb_candidates.txt`
+   (Arm **1.1.0** (imaging+OCR) is the default for every HTB run; pass `--prompt <arm>` only to
+   override.) The candidate flag prints as a block and is appended to `hackthebox_runs/htb_candidates.txt`
    (and `.jsonl`). **You** submit it on HTB. Done.
 
 ### File-only challenge (no IP:PORT)
@@ -35,7 +36,7 @@ files on an air-gapped network:
 
 ```
 python run_htb.py --platform manual --flag-mode manual \
-    --files-dir "external/hackthebox/<challenge_name>" --prompt 1.1.0
+    --files-dir "external/hackthebox/<challenge_name>"
 ```
 
 (With no service there is no `egress_check`; there is nothing to connect to.)
@@ -51,7 +52,7 @@ python run_htb.py --platform manual --flag-mode manual \
 |---|---|---|
 | `--platform` | `manual` (default) · `mcp` | Where the endpoint/files come from. `manual` = your `--files-dir` + `--target`, zero MCP calls. `mcp` = HTB MCP client (scaffold; not wired yet). |
 | `--flag-mode` | `manual` (default) · `auto` | `manual` = surface the candidate for you to submit. `auto` = submit via the controller MCP client (scaffold; needs the HTB MCP submit tool wired). |
-| `--prompt` | `1.0.0` · `1.1.0` · `baseline` | Solver arm. Use **`1.1.0`** for anything with images (imaging+OCR). |
+| `--prompt` | `1.1.0` (default) · `1.0.0` · `baseline` | Solver arm. **Every HTB run defaults to `1.1.0`** (imaging+OCR); pass this only to override. |
 | `--max-turns` / `--token-cap` | int | Per-run budget override (frozen defaults untouched). |
 
 - **Fully offline run** (MCP down): `--platform manual --flag-mode manual` (the defaults).
