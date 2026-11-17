@@ -1,0 +1,26 @@
+# CTF solver sandbox image — HARDWARE ARM (agent_version 2.1.0).
+#
+# Post-freeze arm. It is the imaging+OCR arm (sandbox/Dockerfile.imaging, ctf-solver-sandbox:v1.1)
+# plus hardware tooling for logic-analyzer and PCB challenges:
+#   - sigrok-cli + libsigrokdecode4 : protocol decoders (uart/spi/i2c/...) for sigrok .sr / .vcd / CSV
+#         captures (NOTE: sigrok cannot read Saleae .sal natively — those are unzipped and decoded
+#         from their saved transitions, or converted to .vcd/CSV first).
+#   - gerbv : render PCB gerber layers (*.gbr) to an image so the silkscreen/copper can be OCR'd
+#         (hardware challenges often print the flag on the board).
+#   - unzip : captures/boards frequently arrive zipped (the base image lacked it).
+# The frozen baseline (v1) and imaging (v1.1) images are left untouched; this builds a separate tag.
+# Build:  docker build -f sandbox/Dockerfile.sigrok -t ctf-solver-sandbox:v2.1 sandbox/
+FROM ctf-solver-sandbox:v1.1
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# sigrok-cli + its stock decoders (uart/spi/i2c under /usr/share/libsigrokdecode/decoders); gerbv to
+# render gerbers for OCR; unzip for zipped captures/boards.
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        sigrok-cli libsigrokdecode4 gerbv unzip \
+    && rm -rf /var/lib/apt/lists/*
+USER solver
+
+WORKDIR /workspace
+CMD ["sleep", "infinity"]

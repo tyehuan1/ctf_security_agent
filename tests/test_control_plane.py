@@ -39,6 +39,25 @@ class ManualChallengeAndStagingTest(unittest.TestCase):
             self.assertEqual(chal.files, ["a.bin", "readme.txt"])
             self.assertEqual(chal.name, "example")
 
+    def test_nested_files_recursed_and_macos_junk_skipped(self):
+        # Reproduces the hw_critical_flight failure: files nested in a subdir + __MACOSX / ._* junk.
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as ws:
+            sub = Path(d) / "board"
+            sub.mkdir()
+            (sub / "a.gbr").write_text("x", encoding="utf-8")
+            (sub / "b.gbr").write_text("y", encoding="utf-8")
+            junk = Path(d) / "__MACOSX" / "board"
+            junk.mkdir(parents=True)
+            (junk / "._a.gbr").write_bytes(b"junk")
+            (Path(d) / ".DS_Store").write_bytes(b"junk")
+            (sub / "._b.gbr").write_bytes(b"junk")
+            chal = ManualChallenge("hw", Path(d))
+            self.assertEqual(chal.files, ["board/a.gbr", "board/b.gbr"])   # recursed, junk gone
+            ctx, inv = stage_manual_context(chal, "hw", Path(ws), None, description="d")
+            self.assertTrue((Path(ws) / "board" / "a.gbr").exists())       # subpath preserved
+            self.assertFalse((Path(ws) / "__MACOSX").exists())
+            self.assertEqual(sorted(ctx["files"]), ["board/a.gbr", "board/b.gbr"])
+
     def test_staging_copies_files_and_builds_context(self):
         with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as ws:
             self._files(d)

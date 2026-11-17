@@ -26,6 +26,30 @@ def _sha256(p: Path) -> str:
     return h.hexdigest()
 
 
+_JUNK_DIR_PARTS = {"__MACOSX"}
+
+
+def _is_junk(rel: Path) -> bool:
+    """Archive cruft that should not be staged as a challenge file."""
+    if any(part in _JUNK_DIR_PARTS for part in rel.parts):
+        return True
+    base = rel.name
+    return base == ".DS_Store" or base.startswith("._")
+
+
+def list_challenge_files(root: Path) -> list:
+    """Challenge files under root as sorted relative posix paths, recursively, skipping macOS junk."""
+    root = Path(root)
+    out = []
+    for p in root.rglob("*"):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(root)
+        if not _is_junk(rel):
+            out.append(rel.as_posix())
+    return sorted(out)
+
+
 class ManualChallenge:
     """The small subset of a CTFChallenge the attempt loop touches, for an operator-supplied
     challenge with no dataset entry and no answer key (flag is validated via the HTB flag gateway)."""
@@ -35,7 +59,9 @@ class ManualChallenge:
         self.category = category
         self.challenge_dir = Path(files_dir)
         self.flag = None                      # no local answer key; HTB (or the operator) scores it
-        self.files = sorted(p.name for p in self.challenge_dir.iterdir() if p.is_file())
+        # Recurse: downloaded sets often nest files in a subdir (e.g. flight_control_board/*.gbr) and
+        # carry macOS junk (__MACOSX/, ._* AppleDouble, .DS_Store). Relative posix paths are preserved.
+        self.files = list_challenge_files(self.challenge_dir)
         self.challenge = {"name": name, "category": category}
 
 
@@ -44,7 +70,7 @@ def stage_manual_context(chal: ManualChallenge, challenge_id: str, workspace: Pa
     """Copy the operator's files into the workspace and build the solver's initial context.
 
     Mirrors loader.export_contestant_context (same keys), minus the answer-key leak check (there is
-    no key). Files are copied flat from the operator directory; nothing escapes the workspace.
+    no key). Files are copied preserving their relative subpaths; nothing escapes the workspace.
     """
     import shutil
 

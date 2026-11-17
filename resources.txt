@@ -16,6 +16,10 @@ Sandbox images (built from sandbox/; recorded with `docker image inspect --forma
   ctf-solver-sandbox:v1.1  sha256:beb66bc273a906d6c650819069b6c9a8ec5c8db6efeed624dfb90fd8aa4a0413
                            sandbox/Dockerfile.imaging — imaging+OCR arm (v1.1.0): v1 + Pillow, numpy,
                            pytesseract (tesseract 5.5.0), pyzbar (libzbar0)
+  ctf-solver-sandbox:v2.1  sha256:3c0436b1532f90a7c7ad9951a3aaa646789e055e45ff23050410b1fd88da502c
+                           sandbox/Dockerfile.sigrok — hardware arm (v2.1.0), default for HTB runs:
+                           v1.1 + sigrok-cli 0.7.2 + libsigrokdecode4 (uart/spi/i2c decoders),
+                           gerbv (render PCB gerbers for OCR), and unzip
 
 Windows checkout notes (content is unchanged; only on-disk layout differs)
   - Repo-local git config: core.protectNTFS=false, core.autocrlf=false, core.eol=lf, core.longpaths=true

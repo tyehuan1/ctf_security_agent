@@ -134,7 +134,8 @@ class ConfigArmTest(unittest.TestCase):
     def test_arm_selects_image_and_prompt(self):
         for arm, variant, image in [("baseline", "baseline", "ctf-solver-sandbox:v1"),
                                     ("1.0.0", "frozen", "ctf-solver-sandbox:v1"),
-                                    ("1.1.0", "imaging", "ctf-solver-sandbox:v1.1")]:
+                                    ("1.1.0", "imaging", "ctf-solver-sandbox:v1.1"),
+                                    ("2.1.0", "sigrok", "ctf-solver-sandbox:v2.1")]:
             os.environ["CTF_ARM"] = arm
             s = config.load_settings()
             self.assertEqual(s["agent_version"], arm)
@@ -151,18 +152,28 @@ class ConfigArmTest(unittest.TestCase):
         baseline = build_system_prompt("baseline")
         frozen = build_system_prompt("frozen")
         imaging = build_system_prompt("imaging")
+        sigrok = build_system_prompt("sigrok")
         # baseline (pre-improvement): no reasoning block, no run-and-interact block, no imaging
         self.assertNotIn("Reason before you act", baseline)
         self.assertNotIn("run the program", baseline)
         self.assertNotIn("pytesseract", baseline)
+        self.assertNotIn("sigrok", baseline)
         # frozen (selected v1.0.0): reasoning + run-and-interact, but no imaging
         self.assertIn("Reason before you act", frozen)
         self.assertIn("run the program", frozen)
         self.assertNotIn("pytesseract", frozen)
-        # imaging (v1.1.0): frozen plus the imaging/OCR guidance
+        self.assertNotIn("sigrok", frozen)
+        # imaging (v1.1.0): frozen plus the imaging/OCR guidance, still no sigrok
         self.assertIn("pytesseract", imaging)
+        self.assertNotIn("sigrok", imaging)
+        # sigrok (v2.1.0): imaging plus the hardware (logic-analyzer + gerber) guidance
+        self.assertIn("pytesseract", sigrok)
+        self.assertIn("sigrok-cli", sigrok)
+        self.assertIn(".sal", sigrok)
+        self.assertIn("gerbv", sigrok)
         self.assertLess(len(baseline), len(frozen))
         self.assertLess(len(frozen), len(imaging))
+        self.assertLess(len(imaging), len(sigrok))
 
 
 class ExtractCandidateTest(unittest.TestCase):

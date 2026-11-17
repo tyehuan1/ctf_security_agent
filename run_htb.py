@@ -43,9 +43,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--challenge-id", default=None, help="HTB numeric challenge id (required for --platform mcp)")
     ap.add_argument("--description", default=None, help="override the challenge description shown to the solver")
     ap.add_argument("--trial", type=int, default=1)
-    ap.add_argument("--prompt", choices=sorted(config.ARMS), default="1.1.0",
-                    help="solver arm (sets CTF_ARM); default 1.1.0 (imaging+OCR) for all HTB runs, "
-                         "manual or mcp. Pass another arm to override.")
+    ap.add_argument("--prompt", choices=sorted(config.ARMS), default="2.1.0",
+                    help="solver arm (sets CTF_ARM); default 2.1.0 (imaging+OCR + sigrok logic-analyzer "
+                         "decoding) for all HTB runs, manual or mcp. Pass another arm to override.")
     ap.add_argument("--results", type=Path, default=ROOT / "hackthebox_runs" / "htb_results.jsonl")
     ap.add_argument("--traces", type=Path, default=ROOT / "hackthebox_runs" / "traces")
     ap.add_argument("--runs", type=Path, default=ROOT / "hackthebox_runs" / "runs")

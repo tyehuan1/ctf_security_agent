@@ -177,10 +177,28 @@ def _without_imaging(text: str) -> str:
 
 BASE_SYSTEM_PROMPT = _without_imaging(SYSTEM_PROMPT)   # frozen v1.0.0 improved prompt (no imaging)
 
+# v2.1.0 arm: the imaging prompt plus hardware guidance (logic-analyzer + PCB/gerber), added as its
+# own paragraphs just before the "Provided files vs. the live target." section.
+_HARDWARE_GUIDANCE = (
+    "For logic-analyzer captures, the protocol decoders are in sigrok-cli. sigrok reads its own .sr "
+    "and .vcd/CSV: run the matching decoder — sigrok-cli -i cap.sr -P uart:baudrate=<n>:rx=<ch> "
+    "(or spi / i2c) — and a 2-channel TX/RX capture is UART. A Saleae .sal is NOT readable by "
+    "sigrok-cli directly: it is a zip (meta.json + digital-N.bin), so unzip it, rebuild each "
+    "channel's waveform from the saved transitions and decode it in Python (infer the baud from the "
+    "shortest pulse width), or convert it to .vcd/CSV first and then run sigrok. Do not pass a .sal "
+    "straight to sigrok-cli.\n\n"
+    "For PCB / gerber challenges the flag is usually printed on the board, not in the file bytes: "
+    "render each gerber layer to an image with gerbv (gerbv -x png -D 600 -o layer.png <file>.gbr) "
+    "and OCR it with pytesseract. Check the silkscreen and the copper layers, mirror the back (B_*) "
+    "layers before OCR (they read mirrored), and try a couple of rotations.")
+SIGROK_SYSTEM_PROMPT = SYSTEM_PROMPT.replace(
+    _IMAGING_ANCHOR_B, "\n\n" + _HARDWARE_GUIDANCE + _IMAGING_ANCHOR_B, 1)
+
 _PROMPT_VARIANTS = {
     "baseline": PRE_IMPROVEMENT_PROMPT,   # pre-improvement: no reasoning / run-and-interact lines
     "frozen":   BASE_SYSTEM_PROMPT,       # selected v1.0.0: improved prompt, no imaging
     "imaging":  SYSTEM_PROMPT,            # v1.1.0 arm: improved prompt + imaging/OCR guidance
+    "sigrok":   SIGROK_SYSTEM_PROMPT,     # v2.1.0 arm: imaging + logic-analyzer (sigrok) guidance
 }
 
 
