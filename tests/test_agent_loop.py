@@ -172,6 +172,9 @@ class ConfigArmTest(unittest.TestCase):
         self.assertIn(".sal", sigrok)
         self.assertIn("gerbv", sigrok)
         self.assertIn("/workspace/_verify/", sigrok)   # host-visible render-saving convention
+        self.assertIn("In1_Cu", sigrok)                # render inner copper layers too
+        self.assertIn("decoy", sigrok)                 # instruction-like flag = likely decoy
+        self.assertIn("every HTB{...}", sigrok)        # enumerate all candidates, not just the first
         self.assertLess(len(baseline), len(frozen))
         self.assertLess(len(frozen), len(imaging))
         self.assertLess(len(imaging), len(sigrok))

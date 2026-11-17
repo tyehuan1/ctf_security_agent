@@ -52,6 +52,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-wait", action="store_true", help="skip the pre-attempt rate-limit window check")
     ap.add_argument("--max-turns", type=int, default=None, help="override budget.max_turns for this run only")
     ap.add_argument("--token-cap", type=int, default=None, help="override budget.attempt_token_cap for this run only")
+    ap.add_argument("--deadline-s", type=int, default=None,
+                    help="override budget.attempt_deadline_s (wall-clock) for this run only")
     a = ap.parse_args(argv)
 
     if a.prompt:
@@ -62,6 +64,8 @@ def main(argv: list[str] | None = None) -> int:
         settings["budget"]["max_turns"] = a.max_turns
     if a.token_cap is not None:
         settings["budget"]["attempt_token_cap"] = a.token_cap
+    if a.deadline_s is not None:
+        settings["budget"]["attempt_deadline_s"] = a.deadline_s
 
     cp = build_control_plane(a.platform, files_dir=a.files_dir, target=a.target,
                              name=a.name, description=a.description, challenge_id=a.challenge_id)
