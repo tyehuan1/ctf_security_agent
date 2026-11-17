@@ -124,8 +124,16 @@ the HTB container.
 Before game day:
 
 1. **Point the controller at the competition endpoint.** The model API base URL lives in
-   `config/settings.json` (`model.base_url`); the token lives in `.env` as `LITELLM_TOKEN` (secret,
-   redacted from traces, never given to the solver). Set both to the key/endpoint you were issued.
+   `config/settings.json` (`model.base_url`). HTB runs authenticate the model with **`CHALLENGE_TOKEN`**
+   from `.env` by default (the Duke AI gateway key with the competition budget) — set it there. It
+   falls back to `LITELLM_TOKEN` if unset, and `--token-env <NAME>` overrides. All three tokens below
+   are secrets: redacted from traces and never given to the solver sandbox.
+
+   | `.env` var | What it is | Used for |
+   |---|---|---|
+   | `CHALLENGE_TOKEN` | Duke AI **model gateway** key ($25 budget) | Powers the solver's LLM calls on HTB runs (default) |
+   | `LITELLM_TOKEN` | Model gateway key | The frozen CTFTiny scored path; HTB fallback |
+   | `MCP_TOKEN` | **HTB MCP server** auth (a personal HTB token) | `--platform mcp` only: start/submit/download. **Unrelated to the two gateway keys.** |
 2. **Confirm both models are served** by that endpoint: `claude-haiku-5-5` (default) and
    `claude-sonnet-5-5` (backup arm). If the gateway uses different ids, set `LITELLM_MODEL` to
    override, or tell me and I'll repoint the `2.2.0-sonnet` arm.

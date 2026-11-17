@@ -16,7 +16,12 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[2]
 SETTINGS_PATH = ROOT / "config" / "settings.json"
-SECRET_KEYS = ("LITELLM_TOKEN", "MCP_TOKEN")
+# Secrets live only in .env; redacted from traces/exports and never given to the solver sandbox.
+#   LITELLM_TOKEN   - model gateway key for the frozen CTFTiny scored path.
+#   CHALLENGE_TOKEN - Duke AI gateway key for the HTB competition (its own budget); the default
+#                     model token for HTB runs (run_htb.py). Falls back to LITELLM_TOKEN if unset.
+#   MCP_TOKEN       - HTB MCP server auth (controller-side only). Unrelated to the two gateway keys.
+SECRET_KEYS = ("LITELLM_TOKEN", "CHALLENGE_TOKEN", "MCP_TOKEN")
 
 # How the controller handles a solver's candidate flag. Controller-side only; the solver never
 # participates (it reports a candidate through submit_flag exactly as before, and never sees any token).

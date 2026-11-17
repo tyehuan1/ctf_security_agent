@@ -31,6 +31,39 @@ def client():
     return c
 
 
+class TokenSelectionTest(unittest.TestCase):
+    """GatewayClient._token picks the configured token_env, falling back to LITELLM_TOKEN."""
+
+    def _client(self, token_env=None):
+        s = config.load_settings()
+        if token_env is not None:
+            s["model"]["token_env"] = token_env
+        return GatewayClient(s)
+
+    def test_default_uses_litellm_token(self):
+        with mock.patch("solver.llm.os.getenv", side_effect=lambda n: "LK" if n == "LITELLM_TOKEN" else None), \
+             mock.patch("solver.llm.config.secret", return_value=None):
+            self.assertEqual(self._client()._token(), "LK")
+
+    def test_htb_uses_challenge_token(self):
+        env = {"CHALLENGE_TOKEN": "CK", "LITELLM_TOKEN": "LK"}
+        with mock.patch("solver.llm.os.getenv", side_effect=lambda n: env.get(n)), \
+             mock.patch("solver.llm.config.secret", return_value=None):
+            self.assertEqual(self._client("CHALLENGE_TOKEN")._token(), "CK")
+
+    def test_falls_back_to_litellm_when_challenge_missing(self):
+        env = {"LITELLM_TOKEN": "LK"}            # CHALLENGE_TOKEN unset
+        with mock.patch("solver.llm.os.getenv", side_effect=lambda n: env.get(n)), \
+             mock.patch("solver.llm.config.secret", return_value=None):
+            self.assertEqual(self._client("CHALLENGE_TOKEN")._token(), "LK")
+
+    def test_raises_when_neither_is_set(self):
+        with mock.patch("solver.llm.os.getenv", return_value=None), \
+             mock.patch("solver.llm.config.secret", return_value=None):
+            with self.assertRaises(LLMError):
+                self._client("CHALLENGE_TOKEN")._token()
+
+
 class GatewayRateLimitTest(unittest.TestCase):
     def test_429_waits_retry_after_then_succeeds(self):
         replies = [Resp(429, headers={"retry-after": "7"}, text="rate limit"), Resp(200, OK_BODY)]

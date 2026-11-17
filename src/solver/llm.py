@@ -60,10 +60,16 @@ class GatewayClient:
         return self.model["base_url"].rstrip("/") + "/v1/chat/completions"
 
     def _token(self) -> str:
-        key = os.getenv("LITELLM_TOKEN") or config.secret("LITELLM_TOKEN")
-        if not key:
-            raise LLMError("LITELLM_TOKEN not set")
-        return key
+        # Which .env var holds the gateway bearer token. HTB competition runs set model.token_env to
+        # CHALLENGE_TOKEN (the Duke AI gateway key with its own budget); the frozen CTFTiny scored
+        # path leaves it at the default LITELLM_TOKEN. LITELLM_TOKEN is always the last-resort
+        # fallback so a missing competition key doesn't hard-fail a run.
+        primary = self.model.get("token_env") or "LITELLM_TOKEN"
+        for name in (primary, "LITELLM_TOKEN"):
+            key = os.getenv(name) or config.secret(name)
+            if key:
+                return key
+        raise LLMError(f"{primary} not set (no LITELLM_TOKEN fallback either)")
 
     def chat(self, messages: list[dict], *, tools: Optional[list[dict]] = None,
              timeout_s: Optional[float] = None, purpose: str = "") -> ModelReply:

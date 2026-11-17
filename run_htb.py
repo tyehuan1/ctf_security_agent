@@ -67,6 +67,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--results", type=Path, default=ROOT / "hackthebox_runs" / "htb_results.jsonl")
     ap.add_argument("--traces", type=Path, default=ROOT / "hackthebox_runs" / "traces")
     ap.add_argument("--runs", type=Path, default=ROOT / "hackthebox_runs" / "runs")
+    ap.add_argument("--token-env", default="CHALLENGE_TOKEN",
+                    help="which .env var holds the model gateway key (default CHALLENGE_TOKEN, the Duke "
+                         "AI competition key; falls back to LITELLM_TOKEN if unset).")
     ap.add_argument("--no-wait", action="store_true", help="skip the pre-attempt rate-limit window check")
     ap.add_argument("--max-turns", type=int, default=None, help="override budget.max_turns for this run only")
     ap.add_argument("--token-cap", type=int, default=None, help="override budget.attempt_token_cap for this run only")
@@ -78,6 +81,8 @@ def main(argv: list[str] | None = None) -> int:
         os.environ["CTF_ARM"] = a.prompt
     os.environ["CTF_FLAG_MODE"] = a.flag_mode     # HTB is never the local answer-key mode
     settings = config.load_settings()
+    # HTB runs bill the Duke AI competition key (CHALLENGE_TOKEN) by default, not LITELLM_TOKEN.
+    settings["model"]["token_env"] = a.token_env
     # Selective turn/timeout/token bump: pwn & reversing get the longer allowance, other categories
     # stay leaner. Applied only here (HTB entrypoint); the scored CTFTiny path is never touched. Any
     # explicit CLI flag wins over the per-category default.
@@ -92,9 +97,11 @@ def main(argv: list[str] | None = None) -> int:
                              description=a.description, challenge_id=a.challenge_id, category=a.category)
     challenge_id = str(cp.challenge_id)
     tier = "long (pwn/rev)" if htb_is_long_category(a.category) else "default"
-    print(f"arm={a.prompt} model={settings['model']['name']} category={a.category!r} ({tier} budget: "
-          f"{settings['budget']['max_turns']} turns, {settings['budget']['attempt_deadline_s']:.0f}s, "
-          f"{settings['budget']['attempt_token_cap']:,} tokens)")
+    key_present = bool(config.secret(a.token_env))
+    key_note = a.token_env if key_present else f"{a.token_env} MISSING -> LITELLM_TOKEN fallback"
+    print(f"arm={a.prompt} model={settings['model']['name']} key={key_note} category={a.category!r} "
+          f"({tier} budget: {settings['budget']['max_turns']} turns, "
+          f"{settings['budget']['attempt_deadline_s']:.0f}s, {settings['budget']['attempt_token_cap']:,} tokens)")
 
     if not a.no_wait:
         wait_for_rate_window(settings)
