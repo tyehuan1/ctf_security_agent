@@ -38,7 +38,7 @@ ARMS = {
     "1.0.0":    {"image": "ctf-solver-sandbox:v1",   "prompt": "frozen"},
     "1.1.0":    {"image": "ctf-solver-sandbox:v1.1", "prompt": "imaging"},
     "2.1.0":    {"image": "ctf-solver-sandbox:v2.1", "prompt": "sigrok"},
-    "2.2.0":    {"image": "ctf-solver-sandbox:v2.2", "prompt": "sigrok"},
+    "2.2.0":    {"image": "ctf-solver-sandbox:v2.2", "prompt": "tools"},
 }
 
 

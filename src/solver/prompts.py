@@ -214,11 +214,28 @@ _HARDWARE_GUIDANCE = (
 SIGROK_SYSTEM_PROMPT = SYSTEM_PROMPT.replace(
     _IMAGING_ANCHOR_B, "\n\n" + _HARDWARE_GUIDANCE + _IMAGING_ANCHOR_B, 1)
 
+# v2.2.0 arm: the sigrok prompt plus a pointer to the broader toolset in that image (radare2, z3,
+# beautifulsoup4, tshark, foremost, libc-database), so the solver reaches for the right one.
+_TOOLS_GUIDANCE = (
+    "Reach for the right tool for the challenge type — all preinstalled, no network needed:\n"
+    "  - reversing: radare2 (r2 -A <file> then afl/pdf; rabin2 -zz for strings and symbols), "
+    "alongside actually running the binary.\n"
+    "  - pwn: pwntools for I/O; when you leak a libc address, identify the libc OFFLINE with "
+    "libc-find (libc-database, a handful of common Ubuntu libcs are seeded) — e.g. libc-find printf "
+    "<low-12-bits> system <low-12-bits> — then use the offsets it reports.\n"
+    "  - crypto: z3 (z3-solver) for constraint/SAT problems, plus pycryptodome and sympy.\n"
+    "  - web: requests to drive the target and beautifulsoup4 (bs4) to parse the HTML it returns.\n"
+    "  - stego/forensics: binwalk and foremost to carve embedded files, and tshark to read "
+    ".pcap/.pcapng captures (tshark -r capture.pcap ...).")
+TOOLS_SYSTEM_PROMPT = SIGROK_SYSTEM_PROMPT.replace(
+    _IMAGING_ANCHOR_B, "\n\n" + _TOOLS_GUIDANCE + _IMAGING_ANCHOR_B, 1)
+
 _PROMPT_VARIANTS = {
     "baseline": PRE_IMPROVEMENT_PROMPT,   # pre-improvement: no reasoning / run-and-interact lines
     "frozen":   BASE_SYSTEM_PROMPT,       # selected v1.0.0: improved prompt, no imaging
     "imaging":  SYSTEM_PROMPT,            # v1.1.0 arm: improved prompt + imaging/OCR guidance
     "sigrok":   SIGROK_SYSTEM_PROMPT,     # v2.1.0 arm: imaging + logic-analyzer (sigrok) guidance
+    "tools":    TOOLS_SYSTEM_PROMPT,      # v2.2.0 arm: sigrok + broad per-challenge-type tool pointers
 }
 
 

@@ -136,7 +136,7 @@ class ConfigArmTest(unittest.TestCase):
                                     ("1.0.0", "frozen", "ctf-solver-sandbox:v1"),
                                     ("1.1.0", "imaging", "ctf-solver-sandbox:v1.1"),
                                     ("2.1.0", "sigrok", "ctf-solver-sandbox:v2.1"),
-                                    ("2.2.0", "sigrok", "ctf-solver-sandbox:v2.2")]:
+                                    ("2.2.0", "tools", "ctf-solver-sandbox:v2.2")]:
             os.environ["CTF_ARM"] = arm
             s = config.load_settings()
             self.assertEqual(s["agent_version"], arm)
@@ -154,6 +154,7 @@ class ConfigArmTest(unittest.TestCase):
         frozen = build_system_prompt("frozen")
         imaging = build_system_prompt("imaging")
         sigrok = build_system_prompt("sigrok")
+        tools = build_system_prompt("tools")
         # baseline (pre-improvement): no reasoning block, no run-and-interact block, no imaging
         self.assertNotIn("Reason before you act", baseline)
         self.assertNotIn("run the program", baseline)
@@ -176,9 +177,17 @@ class ConfigArmTest(unittest.TestCase):
         self.assertIn("In1_Cu", sigrok)                # render inner copper layers too
         self.assertIn("decoy", sigrok)                 # instruction-like flag = likely decoy
         self.assertIn("every HTB{...}", sigrok)        # enumerate all candidates, not just the first
+        self.assertNotIn("libc-find", sigrok)          # the broad-tool pointers are v2.2.0 only
+        # tools (v2.2.0): sigrok superset plus per-challenge-type tool pointers
+        self.assertIn("gerbv", tools)                  # inherits the hardware guidance
+        self.assertIn("libc-find", tools)              # pwn: offline libc id
+        self.assertIn("radare2", tools)                # reversing
+        self.assertIn("z3", tools)                     # crypto
+        self.assertIn("tshark", tools)                 # forensics
         self.assertLess(len(baseline), len(frozen))
         self.assertLess(len(frozen), len(imaging))
         self.assertLess(len(imaging), len(sigrok))
+        self.assertLess(len(sigrok), len(tools))
 
 
 class ExtractCandidateTest(unittest.TestCase):
