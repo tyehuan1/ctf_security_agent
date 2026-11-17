@@ -112,11 +112,19 @@ def main(argv: list[str] | None = None) -> int:
                     help="configuration arm to run (sets CTF_ARM): baseline | 1.0.0 (selected) | 1.1.0")
     ap.add_argument("--results", type=Path, default=None, help="override results path (use for non-selected arms)")
     ap.add_argument("--traces", type=Path, default=None, help="override traces dir (use for non-selected arms)")
+    ap.add_argument("--max-turns", type=int, default=None,
+                    help="override budget.max_turns for this run only (exploration; frozen default unchanged)")
+    ap.add_argument("--token-cap", type=int, default=None,
+                    help="override budget.attempt_token_cap for this run only (exploration)")
     a = ap.parse_args(argv)
 
     if a.prompt:
         os.environ["CTF_ARM"] = a.prompt           # select the arm before settings resolve it
     settings = config.load_settings()
+    if a.max_turns is not None:
+        settings["budget"]["max_turns"] = a.max_turns       # run-only override; settings.json untouched
+    if a.token_cap is not None:
+        settings["budget"]["attempt_token_cap"] = a.token_cap
     arm = settings["agent_version"]
     label = None if arm == "1.0.0" else f"arm-{arm}"   # tag run_ids of non-selected arms
     results_path = Path(a.results) if a.results else config.path(settings["paths"]["results"])

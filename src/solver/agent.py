@@ -88,7 +88,7 @@ def _strip_candidate(s) -> str:
 
 # A known flag prefix through the last closing brace after it (greedy, so a brace inside the
 # flag body is kept). Text before the prefix or after that brace is dropped.
-FLAG_FORMAT = re.compile(r"(?:flag|FLAG|csawctf)\{.*\}", re.DOTALL)
+FLAG_FORMAT = re.compile(r"(?:flag|FLAG|csawctf|HTB|htb)\{.*\}", re.DOTALL)
 
 
 def extract_candidate(raw) -> str:

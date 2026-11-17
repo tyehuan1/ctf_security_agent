@@ -66,6 +66,21 @@ class LoaderTest(unittest.TestCase):
         chal = loader.load_challenge("pwn-get-it", self.ds, self.settings)
         self.assertEqual(chal.challenge_dir.name, "get_it_")
 
+    def test_port_fallback_for_legacy_port_key(self):
+        # msc-algebra declares its service under "port" (not nyuctf's "internal_port"),
+        # so chal.port is None; the fallback recovers it and target_endpoint resolves.
+        chal = loader.load_challenge("msc-algebra", self.ds, self.settings)
+        self.assertIsNone(chal.port)                       # nyuctf itself does not see it
+        self.assertEqual(loader.challenge_port(chal), 4324)
+        ep = loader.target_endpoint(chal, "target")
+        self.assertIsNotNone(ep)
+        self.assertEqual(ep["port"], 4324)
+        self.assertIn(ep["type"], ("nc", "web"))           # typed, not None
+
+    def test_internal_port_challenge_unchanged(self):
+        chal = loader.load_challenge("pwn-roppity", self.ds, self.settings)
+        self.assertEqual(loader.challenge_port(chal), int(chal.port))
+
 
 if __name__ == "__main__":
     unittest.main()

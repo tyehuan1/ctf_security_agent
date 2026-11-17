@@ -173,6 +173,8 @@ class ExtractCandidateTest(unittest.TestCase):
             "  `FLAG{A_b}` ": "FLAG{A_b}",
             "answer: csawctf{x1}.": "csawctf{x1}",
             "flag{a{b}c}": "flag{a{b}c}",          # inner braces kept
+            "the flag is HTB{pwn_3d}!": "HTB{pwn_3d}",   # Hack The Box format
+            "htb{lower_case}": "htb{lower_case}",
             "IoDJuvwxy": "IoDJuvwxy",              # no flag format -> unchanged
             "flag{unterminated": "flag{unterminated",
         }

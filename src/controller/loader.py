@@ -66,6 +66,33 @@ def load_challenge(key: str, ds: CTFDataset | None = None, settings: dict | None
     return CTFChallenge(info, ds.basedir)
 
 
+def challenge_port(chal: CTFChallenge) -> int | None:
+    """Service port for the challenge as an int, or None for a file-only challenge.
+
+    nyuctf's CTFChallenge.port reads only the "internal_port" key. A few older CTFTiny
+    entries (e.g. msc-algebra) declare the service port under "port" with no "internal_port",
+    so chal.port is None and int(chal.port) raises. Fall back to the "port" key so those
+    challenges resolve a target. The dataset files themselves are never modified.
+    """
+    port = chal.port if chal.port is not None else chal.challenge.get("port")
+    return int(port) if port is not None else None
+
+
+def challenge_server_type(chal: CTFChallenge) -> str | None:
+    """chal.server_type, recomputed against the effective port (see challenge_port).
+
+    nyuctf's server_type returns None whenever its port is None, so a challenge recovered
+    via the "port" fallback would otherwise lose its type. This mirrors nyuctf's own rule.
+    """
+    if chal.server_type is not None:
+        return chal.server_type
+    if not chal.server_name or challenge_port(chal) is None:
+        return None
+    if chal.category in {"web", "misc"} and chal.challenge.get("proto") != "nc":
+        return "web"
+    return "nc"
+
+
 def sanitize_text(text: str | None, local_host: str) -> str | None:
     """Rewrite original CSAW hostnames to the local target alias."""
     return CSAW_HOST.sub(local_host, text) if text else text
@@ -73,9 +100,10 @@ def sanitize_text(text: str | None, local_host: str) -> str | None:
 
 def target_endpoint(chal: CTFChallenge, local_host: str) -> dict | None:
     """Local endpoint for service challenges; None for file-only challenges."""
-    if not (chal.container and chal.server_name and chal.port):
+    port = challenge_port(chal)
+    if not (chal.container and chal.server_name and port):
         return None
-    return {"host": local_host, "port": int(chal.port), "type": chal.server_type}
+    return {"host": local_host, "port": port, "type": challenge_server_type(chal)}
 
 
 def export_contestant_context(chal: CTFChallenge, challenge_id: str, workspace: Path,
@@ -110,7 +138,7 @@ def export_contestant_context(chal: CTFChallenge, challenge_id: str, workspace: 
             "flag_plaintext_present": flag_bytes in dst.read_bytes(),
         })
 
-    description = chal.challenge["description"].format_map(SafeDict(box=box, port=chal.port))
+    description = chal.challenge["description"].format_map(SafeDict(box=box, port=challenge_port(chal)))
     context = {
         "challenge_id": challenge_id,
         "name": chal.name,

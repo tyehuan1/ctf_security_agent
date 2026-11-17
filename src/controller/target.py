@@ -30,6 +30,8 @@ from typing import Optional
 
 from nyuctf.challenge import CTFChallenge
 
+from controller.loader import challenge_port
+
 STRIP_SERVICE_KEYS = ("privileged", "cap_add", "devices", "pid", "ipc", "userns_mode", "network_mode",
                       "extra_hosts", "ports", "volumes", "volumes_from", "container_name", "links",
                       "external_links", "dns", "sysctls")
@@ -134,7 +136,7 @@ class Target:
         if res.returncode != 0:
             self.stop()
             raise TargetError(f"docker compose up failed: {res.stderr.strip()[-800:]}")
-        return {"host": self.local_host, "port": int(self.chal.port), "network": self.network}
+        return {"host": self.local_host, "port": challenge_port(self.chal), "network": self.network}
 
     def container_ids(self) -> list[str]:
         res = _run(["docker", "ps", "-aq", "--filter", f"label=com.docker.compose.project={self.project}"], 30)
