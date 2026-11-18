@@ -139,7 +139,9 @@ class ConfigArmTest(unittest.TestCase):
                                     ("2.2.0", "tools", "ctf-solver-sandbox:v2.2"),
                                     ("2.2.0-sonnet", "tools", "ctf-solver-sandbox:v2.2"),
                                     ("2.3.0", "decomp", "ctf-solver-sandbox:v2.3"),
-                                    ("2.3.0-sonnet", "decomp", "ctf-solver-sandbox:v2.3")]:
+                                    ("2.3.0-sonnet", "decomp", "ctf-solver-sandbox:v2.3"),
+                                    ("2.3.1", "websec", "ctf-solver-sandbox:v2.3"),
+                                    ("2.3.1-sonnet", "websec", "ctf-solver-sandbox:v2.3")]:
             os.environ["CTF_ARM"] = arm
             s = config.load_settings()
             self.assertEqual(s["agent_version"], arm)
@@ -187,6 +189,7 @@ class ConfigArmTest(unittest.TestCase):
         sigrok = build_system_prompt("sigrok")
         tools = build_system_prompt("tools")
         decomp = build_system_prompt("decomp")
+        websec = build_system_prompt("websec")
         # baseline (pre-improvement): no reasoning block, no run-and-interact block, no imaging
         self.assertNotIn("Reason before you act", baseline)
         self.assertNotIn("run the program", baseline)
@@ -223,11 +226,18 @@ class ConfigArmTest(unittest.TestCase):
         self.assertIn("/workspace/_decomp", decomp)    # dump pseudocode to a file, then grep it
         self.assertIn("Make this your default", decomp)
         self.assertIn("map the whole path", decomp)    # map auth -> gate -> sink before deep-reversing
+        self.assertNotIn("gopher://", decomp)          # SSRF guidance is v2.3.1 only
+        # websec (v2.3.1): decomp superset plus the scoped SSRF blocks
+        self.assertIn("pdg", websec)                   # inherits the decompiler guidance
+        self.assertIn("file:///etc/passwd", websec)    # SSRF: vary the scheme
+        self.assertIn("gopher://", websec)
+        self.assertIn("exfiltration channel", websec)  # SSRF: establish the read primitive first
         self.assertLess(len(baseline), len(frozen))
         self.assertLess(len(frozen), len(imaging))
         self.assertLess(len(imaging), len(sigrok))
         self.assertLess(len(sigrok), len(tools))
         self.assertLess(len(tools), len(decomp))
+        self.assertLess(len(decomp), len(websec))
 
 
 class ExtractCandidateTest(unittest.TestCase):

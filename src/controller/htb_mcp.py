@@ -154,6 +154,10 @@ def interpret_submit_response(raw) -> SubmitResult:
     obj = _as_obj(raw)
     err = _is_error(obj)
     if err:
+        # "This flag is already owned/solved by your team" is an error (HTTP 400), but it means the
+        # flag is CORRECT and the team already has the points — treat it as accepted, not undetermined.
+        if any(w in err.lower() for w in ("already owned", "already solved", "already own")):
+            return SubmitResult(verified=True, submitted=True, source="htb-mcp", detail=err)
         return SubmitResult(verified=None, submitted=True, source="htb-mcp", detail=err)
     if not isinstance(obj, dict):
         return SubmitResult(verified=None, submitted=True, source="htb-mcp", detail=f"unexpected: {obj!r}"[:200])

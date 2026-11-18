@@ -35,6 +35,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 
+# Windows consoles/redirects default to cp1252; the solver prompt and the model's output routinely
+# contain Unicode (arrows, em-dashes), and printing the candidate block would raise UnicodeEncodeError
+# mid-run. Force UTF-8 on stdout/stderr so no print can crash an attempt.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+    except Exception:  # noqa: BLE001 - older/odd streams without reconfigure; prints still work
+        pass
+
 from common import config  # noqa: E402
 from controller.budget import htb_budget_defaults, htb_is_long_category  # noqa: E402
 from controller.control_plane import PLATFORMS, build_control_plane  # noqa: E402
@@ -59,12 +68,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--challenge-id", default=None, help="HTB numeric challenge id (required for --platform mcp)")
     ap.add_argument("--description", default=None, help="override the challenge description shown to the solver")
     ap.add_argument("--trial", type=int, default=1)
-    ap.add_argument("--prompt", choices=sorted(config.ARMS), default="2.3.0",
-                    help="solver arm (sets CTF_ARM); default 2.3.0 = Haiku 5.5 with the full tooling "
-                         "(imaging+OCR, sigrok, gerbv, radare2/z3/tshark/foremost/libc-database) plus a "
-                         "Ghidra decompiler (pdg) and reversing-workflow guidance. Pass '2.3.0-sonnet' "
-                         "to escalate a stuck challenge to Claude Sonnet 5.5 (same sandbox/prompt, "
-                         "stronger model). Any other arm overrides.")
+    ap.add_argument("--prompt", choices=sorted(config.ARMS), default="2.3.1",
+                    help="solver arm (sets CTF_ARM); default 2.3.1 = Haiku 5.5 with the full tooling "
+                         "(imaging+OCR, sigrok, gerbv, radare2/z3/tshark/foremost/libc-database), a "
+                         "Ghidra decompiler (pdg) with reversing-workflow guidance, and SSRF guidance. "
+                         "Pass '2.3.1-sonnet' to escalate a stuck challenge to Claude Sonnet 5.5 (same "
+                         "sandbox/prompt, stronger model). Any other arm overrides.")
     ap.add_argument("--results", type=Path, default=ROOT / "hackthebox_runs" / "htb_results.jsonl")
     ap.add_argument("--traces", type=Path, default=ROOT / "hackthebox_runs" / "traces")
     ap.add_argument("--runs", type=Path, default=ROOT / "hackthebox_runs" / "runs")
@@ -93,6 +102,13 @@ def main(argv: list[str] | None = None) -> int:
         a.token_cap if a.token_cap is not None else defaults["attempt_token_cap"])
     settings["budget"]["attempt_deadline_s"] = (
         a.deadline_s if a.deadline_s is not None else defaults["attempt_deadline_s"])
+    # Ride out the Duke gateway's intermittent connection drops (it has been closing connections
+    # mid-run with RemoteDisconnected). More tries + longer backoff per model call give a flaky
+    # gateway time to recover; failures still fail the call, just less readily. HTB-only — the frozen
+    # CTFTiny scored path (run_batch/run_attempt) keeps settings.json's retry policy untouched.
+    r = settings.get("retry", {})
+    settings["retry"] = {**r, "attempts": max(6, int(r.get("attempts", 2))),
+                         "backoff_s": max(4.0, float(r.get("backoff_s", 2)))}
 
     cp = build_control_plane(a.platform, files_dir=a.files_dir, target=a.target, name=a.name,
                              description=a.description, challenge_id=a.challenge_id, category=a.category)

@@ -79,17 +79,27 @@ class ManualControlPlane:
         return chal, target, provider
 
 
+def _challenge_has_no_container(start_response) -> bool:
+    """True when start_container reports the challenge has no docker image — i.e. a file-only
+    challenge (reversing/crypto/...). Those have no live service: the solver works offline from the
+    downloaded files, so we skip the forwarder/endpoint instead of polling for a host/port forever."""
+    err = (start_response or {}).get("error", "") if isinstance(start_response, dict) else str(start_response)
+    return "docker image" in str(err).lower()
+
+
 class McpControlPlane:
     """HTB MCP-driven control plane. The controller's MCP client starts the instance, reads its
     connection info (host/port) for the forwarder, and downloads the challenge files (controller has
     egress; the solver does not) which are staged the same way the manual backend stages a local dir.
-    No MCP enumerate/start is needed in manual mode; this is the automated path."""
+    A file-only challenge (no docker image) is run offline, with no forwarder and no endpoint."""
     platform = "mcp"
 
-    def __init__(self, challenge_id, client=None, flag_format: str = "HTB{...}"):
+    def __init__(self, challenge_id, client=None, flag_format: str = "HTB{...}",
+                 category: str = "hackthebox"):
         self.challenge_id = challenge_id        # HTB numeric challenge id
         self._client = client
         self.flag_format = flag_format
+        self.category = category or "hackthebox"
 
     def provision(self, run_id: str, settings: dict) -> Provisioned:
         client = self._client or build_mcp_client()
@@ -98,31 +108,68 @@ class McpControlPlane:
                 "platform 'mcp' needs MCP_TOKEN in .env (controller-side). Run with --platform manual "
                 "--files-dir <dir> [--target IP:PORT] for a fully offline run.")
         cid = self.challenge_id
-        client.start_instance(cid)                       # start the HTB container
-        info = client.connection_info(cid)               # {host, port} from container_status/start
-        if not info:
-            raise HTBNotWired(
-                f"could not read host/port from HTB for challenge {cid}. Check the raw container_status "
-                "response field names (parse_connection_info in htb_mcp is defensive on purpose).")
-        # Download the challenge files (controller egress) and stage them like a local dir. Best
-        # effort: many challenges are service-only (no files — the solver works from the live target),
-        # and a download hiccup must not abort an otherwise-solvable attempt. If files exist and the
-        # download fails, the solver still has the target; it just won't have the local artifacts.
+        start = client.start_instance(cid)               # start the container (or report: no image)
+        # Download the challenge files (controller egress) and stage them like a local dir. The signed
+        # URL is fetched cleanly (no MCP bearer header) with retry; a download hiccup must not abort an
+        # otherwise-solvable attempt, but a genuinely empty staging is surfaced loudly below.
         files_dir = Path(tempfile.mkdtemp(prefix=f"htb-mcp-{cid}-"))
         url = client.get_download_link(cid)
+        download_detail = None
         if url:
+            safe_url = url.split("?")[0]                  # log the path, not the signature query
+            print(f"[mcp] challenge {cid}: get_download_link -> {safe_url}")
             try:
-                download_challenge_files(url, files_dir)
-            except Exception as e:  # noqa: BLE001 - controller-side; keep the attempt alive
-                print(f"[mcp] challenge {cid}: file download failed ({type(e).__name__}: "
-                      f"{str(e)[:120]}); continuing with the live service only")
-        chal = ManualChallenge(str(cid), files_dir)
-        target = ForwarderTarget(info["host"], int(info["port"]), run_id, settings,
-                                 on_stop=lambda: client.stop_container(cid))   # teardown/respawn
-        desc = default_description(
-            {"host": settings["target"]["local_host"], "port": target.listen_port}, self.flag_format)
+                staged = download_challenge_files(url, files_dir)
+                print(f"[mcp] challenge {cid}: staged {len(staged)} file(s) from the HTB download")
+            except Exception as e:  # noqa: BLE001 - controller-side; keep the attempt alive, flag below
+                download_detail = f"{type(e).__name__}: {str(e)[:160]}"
+                print(f"[mcp] challenge {cid}: download FAILED ({download_detail})")
+        else:
+            download_detail = "get_download_link returned no URL"
+            print(f"[mcp] challenge {cid}: {download_detail}")
+        chal = ManualChallenge(str(cid), files_dir, self.category)
+        no_container = _challenge_has_no_container(start)
+        if not chal.files:
+            self._warn_no_files(cid, has_service=not no_container, detail=download_detail)
+
+        if no_container:
+            # File-only challenge: no service. Work offline from the downloaded files (no forwarder,
+            # no endpoint, no egress check) — exactly the manual file-only path.
+            print(f"[mcp] challenge {cid}: no docker image — file-only challenge, running offline")
+            target = OfflineTarget(run_id, settings)
+            desc = self._description(None)
+        else:
+            info = client.connection_info(cid)           # polls until the container is ready
+            if not info:
+                raise HTBNotWired(
+                    f"could not read host/port from HTB for challenge {cid}. Check the raw "
+                    "container_status response field names (parse_connection_info is defensive).")
+            target = ForwarderTarget(info["host"], int(info["port"]), run_id, settings,
+                                     on_stop=lambda: client.stop_container(cid))   # teardown/respawn
+            desc = self._description({"host": settings["target"]["local_host"], "port": target.listen_port})
         provider = _manual_context_provider(chal, str(cid), target, desc, self.flag_format)
         return chal, target, provider
+
+    def _description(self, endpoint_hint):
+        return default_description(endpoint_hint, self.flag_format)
+
+    @staticmethod
+    def _warn_no_files(cid, *, has_service: bool, detail) -> None:
+        """Loudly flag a challenge that staged ZERO files, so a web/rev/crypto run is never silently
+        working blind. Prominent banner in the run output (visible in manual/interactive runs too)."""
+        bar = "!" * 70
+        print(bar)
+        print(f"!!  MCP challenge {cid}: staged ZERO files (workspace files: [])")
+        if detail:
+            print(f"!!  download: {detail}")
+        if has_service:
+            print("!!  The challenge has a live service, so it MAY be service-only (no source files).")
+            print("!!  But if it ships source (web/rev/crypto), THE SOLVER IS WORKING BLIND.")
+        else:
+            print("!!  The challenge has NO service AND no files — the solver has nothing to work from.")
+        print("!!  To stage files by hand: download them, then run")
+        print(f"!!    python run_htb.py --platform manual --files-dir <dir> [--target IP:PORT] --name {cid}")
+        print(bar)
 
 
 def build_control_plane(platform: str, *, files_dir=None, target=None, challenge_id=None,
@@ -137,5 +184,6 @@ def build_control_plane(platform: str, *, files_dir=None, target=None, challenge
         cid = challenge_id or name
         if not cid:
             raise ValueError("platform 'mcp' requires --challenge-id (the HTB numeric challenge id)")
-        return McpControlPlane(cid, client=mcp_client, flag_format=flag_format)
+        return McpControlPlane(cid, client=mcp_client, flag_format=flag_format,
+                               category=category or "hackthebox")
     raise ValueError(f"unknown platform {platform!r}; known: {PLATFORMS}")

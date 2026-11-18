@@ -35,7 +35,10 @@ Sandbox images (built from sandbox/; recorded with `docker image inspect --forma
                            /usr/lib/radare2/6.2.7/r2ghidra_sleigh, so pdg needs no cache write under the
                            read-only runtime). Verified at build + runtime: `r2 -e scr.color=0 -A -qc
                            'pdg @ main' <armbin>` emits C-like pseudocode. ~2.44 GB (vs 1.6 GB v2.2;
-                           lighter than full Ghidra+JRE). Pairs with the `decomp` prompt variant.
+                           lighter than full Ghidra+JRE). Pairs with the `decomp` prompt variant
+                           (v2.3.0) and `websec` (v2.3.1 = decomp + SSRF guidance); both reuse this
+                           image unchanged — the 2.3.1 bump is prompt + controller-side download fixes
+                           only (clean signed-URL fetch, retry, zip/tar extract, loud empty-staging).
 
 Windows checkout notes (content is unchanged; only on-disk layout differs)
   - Repo-local git config: core.protectNTFS=false, core.autocrlf=false, core.eol=lf, core.longpaths=true

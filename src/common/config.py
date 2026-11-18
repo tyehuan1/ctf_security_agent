@@ -38,8 +38,10 @@ HTB_FLAG_MODES = ("manual", "auto")
 # "baseline" is the pre-improvement prompt for comparison; "1.1.0" adds imaging+OCR; "2.1.0" adds
 # sigrok logic-analyzer + gerbv; "2.2.0" adds broad challenge tooling (radare2, z3, tshark, foremost,
 # libc-database, ...). "2.3.0" adds a Ghidra-based decompiler (r2ghidra, callable as `pdg` inside
-# radare2) plus a scoped reversing/analysis-workflow prompt block, and is the default (Haiku 5.5,
-# from settings) for HTB runs (run_htb.py). The "-sonnet" arms are HTB escalation/backup arms:
+# radare2) plus a scoped reversing/analysis-workflow prompt block. "2.3.1" adds two SSRF prompt blocks
+# (scheme variation + establish the read primitive first) on top of 2.3.0 — same v2.3 image, no
+# rebuild — and is the default (Haiku 5.5, from settings) for HTB runs (run_htb.py). The "-sonnet"
+# arms are HTB escalation/backup arms:
 # byte-identical sandbox and prompt as their base, but the model is pinned to Claude Sonnet 5.5 for
 # the harder challenges Haiku can't crack. CTFTiny's scored default stays "1.0.0". An arm with no
 # "model" key runs on settings.model.name (Haiku).
@@ -52,6 +54,8 @@ ARMS = {
     "2.2.0-sonnet": {"image": "ctf-solver-sandbox:v2.2", "prompt": "tools",  "model": "claude-sonnet-5-5"},
     "2.3.0":        {"image": "ctf-solver-sandbox:v2.3", "prompt": "decomp"},
     "2.3.0-sonnet": {"image": "ctf-solver-sandbox:v2.3", "prompt": "decomp", "model": "claude-sonnet-5-5"},
+    "2.3.1":        {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec"},
+    "2.3.1-sonnet": {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec", "model": "claude-sonnet-5-5"},
 }
 
 # Fallback per-token rates (USD per 1M tokens), used only when the gateway omits the

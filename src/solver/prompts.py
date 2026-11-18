@@ -251,6 +251,25 @@ _REVERSING_GUIDANCE = (
 DECOMP_SYSTEM_PROMPT = SIGROK_SYSTEM_PROMPT.replace(
     _IMAGING_ANCHOR_B, "\n\n" + _TOOLS_GUIDANCE + "\n\n" + _REVERSING_GUIDANCE + _IMAGING_ANCHOR_B, 1)
 
+# v2.3.1 arm: the decomp prompt plus two scoped SSRF blocks (scheme-variation and establish-the-read-
+# primitive-first), from issues seen on web/SSRF challenges where enumeration ran without an
+# exfiltration channel and only the http(s) scheme was tried.
+_SSRF_GUIDANCE = (
+    "Server-side request forgery (SSRF):\n"
+    "  - When you control a URL the server fetches (SSRF), systematically vary the URL scheme, not "
+    "just the host/port. Try each as the bare scheme: file:///etc/passwd, file:///app/... and the "
+    "flag path (read local files and app source); gopher:// (talk to internal TCP services like "
+    "redis); dict://, ftp://. Wrapping one scheme inside another (http://file://...) does not work — "
+    "the scheme must be the start of the URL.\n"
+    "  - Before enumerating internal endpoints via SSRF, establish your exfiltration channel: point "
+    "the SSRF at a source whose exact content you control/know, and determine precisely what of the "
+    "response you can observe — status only, an error string, the reflected body, or a parse error "
+    "that includes the fetched bytes. Enumeration is worthless without a way to read what you find; "
+    "find the read primitive first.")
+WEBSEC_SYSTEM_PROMPT = SIGROK_SYSTEM_PROMPT.replace(
+    _IMAGING_ANCHOR_B,
+    "\n\n" + _TOOLS_GUIDANCE + "\n\n" + _REVERSING_GUIDANCE + "\n\n" + _SSRF_GUIDANCE + _IMAGING_ANCHOR_B, 1)
+
 _PROMPT_VARIANTS = {
     "baseline": PRE_IMPROVEMENT_PROMPT,   # pre-improvement: no reasoning / run-and-interact lines
     "frozen":   BASE_SYSTEM_PROMPT,       # selected v1.0.0: improved prompt, no imaging
@@ -258,6 +277,7 @@ _PROMPT_VARIANTS = {
     "sigrok":   SIGROK_SYSTEM_PROMPT,     # v2.1.0 arm: imaging + logic-analyzer (sigrok) guidance
     "tools":    TOOLS_SYSTEM_PROMPT,      # v2.2.0 arm: sigrok + broad per-challenge-type tool pointers
     "decomp":   DECOMP_SYSTEM_PROMPT,     # v2.3.0 arm: tools + decompiler/reversing-workflow guidance
+    "websec":   WEBSEC_SYSTEM_PROMPT,     # v2.3.1 arm: decomp + SSRF (scheme variation + read-primitive)
 }
 
 

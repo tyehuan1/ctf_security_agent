@@ -102,20 +102,39 @@ def stage_manual_context(chal: ManualChallenge, challenge_id: str, workspace: Pa
     return context, inventory
 
 
-def download_challenge_files(url: str, dest_dir: Path) -> list:
-    """Download a challenge archive/file from a (signed) URL into dest_dir and return the staged
-    file names. The CONTROLLER does this (it has egress); the solver never sees the URL. Defensive:
-    a zip is extracted, anything else is saved under its URL basename.
+def download_challenge_files(url: str, dest_dir: Path, *, tries: int = 3, backoff_s: float = 2.0) -> list:
+    """Download a challenge archive/file from a (signed) URL into dest_dir and return the staged file
+    names (recursively). The CONTROLLER does this (it has egress); the solver never sees the URL.
+
+    The URL is PRE-SIGNED. It must be fetched with a clean GET that does NOT carry the MCP
+    ``Authorization: Bearer`` header — a pre-signed URL rejects bearer auth — so this uses a plain
+    urllib request (never the authenticated MCP client), follows redirects (urllib's default), and
+    retries transient failures with backoff. A zip or tar archive is extracted (path-traversal
+    members skipped); anything else is saved under its URL basename.
     """
+    import tarfile
+    import time
     import urllib.parse
     import urllib.request
     import zipfile
 
     dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
-    req = urllib.request.Request(url, headers={"User-Agent": "ctf-controller"})
-    with urllib.request.urlopen(req, timeout=60) as resp:   # noqa: S310 - controller-side, operator URL
-        blob = resp.read()
+    # A generic browser-ish UA: a bare urllib UA is bot-blocked (Cloudflare 1010); no bearer token.
+    req = urllib.request.Request(url, method="GET", headers={"User-Agent": "Mozilla/5.0 (ctf-controller)"})
+    blob = None
+    last_err: Exception | None = None
+    for i in range(max(1, tries)):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:   # noqa: S310 - controller-side signed URL
+                blob = resp.read()
+            break
+        except Exception as e:  # noqa: BLE001 - retry transient failures; non-transient re-raised below
+            last_err = e
+            if i < tries - 1:
+                time.sleep(backoff_s * (i + 1))
+    if blob is None:
+        raise last_err if last_err is not None else RuntimeError("download produced no data")
     name = Path(urllib.parse.urlparse(url).path).name or "download.bin"
     tmp = dest_dir / name
     tmp.write_bytes(blob)
@@ -124,7 +143,12 @@ def download_challenge_files(url: str, dest_dir: Path) -> list:
             safe = [m for m in zf.namelist() if not (m.startswith("/") or ".." in Path(m).parts)]
             zf.extractall(dest_dir, members=safe)
         tmp.unlink(missing_ok=True)
-    return sorted(p.name for p in dest_dir.iterdir() if p.is_file())
+    elif tarfile.is_tarfile(tmp):
+        with tarfile.open(tmp) as tf:
+            safe = [m for m in tf.getmembers() if not (m.name.startswith("/") or ".." in Path(m.name).parts)]
+            tf.extractall(dest_dir, members=safe)
+        tmp.unlink(missing_ok=True)
+    return sorted(p.relative_to(dest_dir).as_posix() for p in dest_dir.rglob("*") if p.is_file())
 
 
 def default_description(endpoint: Optional[dict], flag_format: str = DEFAULT_FLAG_FORMAT) -> str:

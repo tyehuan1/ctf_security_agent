@@ -237,3 +237,4 @@ Evaluation Set */
 
 # Hack The Box live-run artifacts (candidates, traces, flags) -- never commit
 hackthebox_runs/
+hackthebox_official/
