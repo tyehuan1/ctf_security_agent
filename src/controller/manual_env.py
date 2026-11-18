@@ -109,9 +109,15 @@ def download_challenge_files(url: str, dest_dir: Path, *, tries: int = 3, backof
     The URL is PRE-SIGNED. It must be fetched with a clean GET that does NOT carry the MCP
     ``Authorization: Bearer`` header — a pre-signed URL rejects bearer auth — so this uses a plain
     urllib request (never the authenticated MCP client), follows redirects (urllib's default), and
-    retries transient failures with backoff. A zip or tar archive is extracted (path-traversal
-    members skipped); anything else is saved under its URL basename.
+    retries transient failures with backoff.
+
+    The archive is parsed from the downloaded bytes IN MEMORY (io.BytesIO), never by re-opening the
+    raw download from disk: on Windows, re-opening a just-downloaded file can fail with EINVAL
+    (Errno 22) while Defender scans the Mark-of-the-Web artifact. The extracted files (written locally
+    by Python, no MotW) stage normally. A zip or tar is extracted (path-traversal members skipped);
+    anything else is written under its filename.
     """
+    import io
     import tarfile
     import time
     import urllib.parse
@@ -120,34 +126,46 @@ def download_challenge_files(url: str, dest_dir: Path, *, tries: int = 3, backof
 
     dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
-    # A generic browser-ish UA: a bare urllib UA is bot-blocked (Cloudflare 1010); no bearer token.
-    req = urllib.request.Request(url, method="GET", headers={"User-Agent": "Mozilla/5.0 (ctf-controller)"})
     blob = None
+    name = "download.bin"
     last_err: Exception | None = None
     for i in range(max(1, tries)):
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:   # noqa: S310 - controller-side signed URL
+            # A generic browser-ish UA: a bare urllib UA is bot-blocked (Cloudflare 1010); no bearer.
+            req = urllib.request.Request(url, method="GET",
+                                         headers={"User-Agent": "Mozilla/5.0 (ctf-controller)"})
+            with urllib.request.urlopen(req, timeout=120) as resp:   # noqa: S310 - controller-side signed URL
+                cd = resp.headers.get("content-disposition", "") or ""
+                nm = cd.split("filename=", 1)[1].strip().strip('"').split(";")[0].strip() if "filename=" in cd else ""
+                name = Path(nm or Path(urllib.parse.urlparse(url).path).name or "download.bin").name
                 blob = resp.read()
             break
-        except Exception as e:  # noqa: BLE001 - retry transient failures; non-transient re-raised below
+        except Exception as e:  # noqa: BLE001 - retry transient fetch failures; re-raised below
             last_err = e
+            blob = None
             if i < tries - 1:
                 time.sleep(backoff_s * (i + 1))
     if blob is None:
         raise last_err if last_err is not None else RuntimeError("download produced no data")
-    name = Path(urllib.parse.urlparse(url).path).name or "download.bin"
-    tmp = dest_dir / name
-    tmp.write_bytes(blob)
-    if zipfile.is_zipfile(tmp):
-        with zipfile.ZipFile(tmp) as zf:
+
+    buf = io.BytesIO(blob)
+    if zipfile.is_zipfile(buf):
+        with zipfile.ZipFile(buf) as zf:
             safe = [m for m in zf.namelist() if not (m.startswith("/") or ".." in Path(m).parts)]
             zf.extractall(dest_dir, members=safe)
-        tmp.unlink(missing_ok=True)
-    elif tarfile.is_tarfile(tmp):
-        with tarfile.open(tmp) as tf:
-            safe = [m for m in tf.getmembers() if not (m.name.startswith("/") or ".." in Path(m.name).parts)]
-            tf.extractall(dest_dir, members=safe)
-        tmp.unlink(missing_ok=True)
+    else:
+        tf = None
+        try:
+            buf.seek(0)
+            tf = tarfile.open(fileobj=buf)           # tar/tar.gz/tar.bz2/tar.xz from memory
+        except (tarfile.TarError, OSError):
+            tf = None
+        if tf is not None:
+            with tf:
+                safe = [m for m in tf.getmembers() if not (m.name.startswith("/") or ".." in Path(m.name).parts)]
+                tf.extractall(dest_dir, members=safe)
+        else:
+            (dest_dir / name).write_bytes(blob)      # not an archive: a single file
     return sorted(p.relative_to(dest_dir).as_posix() for p in dest_dir.rglob("*") if p.is_file())
 
 
