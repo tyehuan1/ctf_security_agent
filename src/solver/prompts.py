@@ -238,15 +238,16 @@ TOOLS_SYSTEM_PROMPT = SIGROK_SYSTEM_PROMPT.replace(
 # Ghidra-based decompiler (r2ghidra) callable as `pdg` inside radare2, so this steers the agent to
 # read compact pseudocode and to grep analysis dumped to files instead of paging raw disassembly.
 _REVERSING_GUIDANCE = (
-    "Reversing and multi-stage analysis workflow:\n"
-    "  - For understanding a binary's logic, prefer decompiled pseudocode (pdg / Ghidra) over raw "
-    "disassembly, especially for large or C++ binaries where disassembly is verbose and token-heavy "
-    "(in radare2: r2 -e scr.color=0 -A -qc 'pdg @ sym.<fn>' <binary>).\n"
-    "  - Dump analysis to files in the workspace and grep them locally for the parts you need, rather "
-    "than paging full disassembly or decompilation into context; read only the relevant lines.\n"
-    "  - For multi-stage web/pwn targets, first map the whole path — authentication → any gate or "
-    "feature flag → the vulnerable sink — before deep-reversing any single stage, so budget is spent "
-    "on the blocking step.")
+    "Reversing a binary — to understand what a function does (its logic, conditions, and the data it "
+    "handles), decompile it to pseudocode instead of reading raw disassembly. Make this your default. "
+    "Concretely: r2 -e scr.color=0 -qc 'aaa; pdg @ sym.<function>' <binary> > /workspace/_decomp/"
+    "<function>.c, then read or grep that file for the parts you need. Use raw disassembly "
+    "(pdf/objdump) only when you need exact instruction addresses, byte offsets, or ROP gadgets — not "
+    "for following logic. Do not page large raw disassembly into context; decompile to a file and "
+    "grep it.\n"
+    "For multi-stage web/pwn targets, first map the whole path — authentication → any gate or feature "
+    "flag → the vulnerable sink — before deep-reversing any single stage, so budget is spent on the "
+    "blocking step.")
 DECOMP_SYSTEM_PROMPT = SIGROK_SYSTEM_PROMPT.replace(
     _IMAGING_ANCHOR_B, "\n\n" + _TOOLS_GUIDANCE + "\n\n" + _REVERSING_GUIDANCE + _IMAGING_ANCHOR_B, 1)
 

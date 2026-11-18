@@ -216,11 +216,12 @@ class ConfigArmTest(unittest.TestCase):
         self.assertIn("radare2", tools)                # reversing
         self.assertIn("z3", tools)                     # crypto
         self.assertIn("tshark", tools)                 # forensics
-        self.assertNotIn("decompiled pseudocode", tools)  # the reversing block is v2.3.0 only
+        self.assertNotIn("/workspace/_decomp", tools)  # the reversing block is v2.3.0 only
         # decomp (v2.3.0): tools superset plus the scoped reversing/decompiler-workflow block
         self.assertIn("libc-find", decomp)             # inherits the broad tooling
-        self.assertIn("decompiled pseudocode", decomp) # prefer pdg/Ghidra over raw disassembly
-        self.assertIn("pdg", decomp)
+        self.assertIn("pdg", decomp)                   # decompile-first default
+        self.assertIn("/workspace/_decomp", decomp)    # dump pseudocode to a file, then grep it
+        self.assertIn("Make this your default", decomp)
         self.assertIn("map the whole path", decomp)    # map auth -> gate -> sink before deep-reversing
         self.assertLess(len(baseline), len(frozen))
         self.assertLess(len(frozen), len(imaging))
