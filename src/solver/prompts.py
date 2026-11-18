@@ -270,6 +270,30 @@ WEBSEC_SYSTEM_PROMPT = SIGROK_SYSTEM_PROMPT.replace(
     _IMAGING_ANCHOR_B,
     "\n\n" + _TOOLS_GUIDANCE + "\n\n" + _REVERSING_GUIDANCE + "\n\n" + _SSRF_GUIDANCE + _IMAGING_ANCHOR_B, 1)
 
+# v2.3.2 arm: strengthens the SSRF block so file:// is a MANDATORY first move (not one option in a
+# list). On TrustPath the agent found the SSRF + the internal portal but never tried file://, which
+# would read the flag/app-source directly — so, as with the decompiler, the guidance is made
+# imperative. Still general (no challenge-specific recipe).
+_SSRF_GUIDANCE_STRONG = (
+    "Server-side request forgery (SSRF) — when you control a URL or host the server fetches:\n"
+    "  - The moment you confirm the server fetches a URL/host you control and you can observe any part "
+    "of the response, your FIRST move is to read local files with the file:// scheme — not HTTP "
+    "enumeration. Try file:///flag.txt, file:///flag, the app's own source (file:///app/app.py, "
+    "file:///app/views.py, file:///proc/self/cwd/...), and file:///etc/passwd to confirm the "
+    "primitive. The flag is very often a local file you can read directly, skipping the internal app "
+    "entirely — do this before probing internal HTTP routes/ports.\n"
+    "  - Systematically vary the URL SCHEME, not just the host/port: file:// (local files, above); "
+    "gopher:// (talk to internal TCP services like redis); dict://, ftp://. Each must be the BARE "
+    "scheme at the start of the URL — wrapping one inside another (http://file://...) does not work.\n"
+    "  - Before enumerating internal endpoints via SSRF, establish your exfiltration channel: point "
+    "the SSRF at a source whose exact content you control/know, and determine precisely what of the "
+    "response you can observe — status only, an error string, the reflected body, or a parse error "
+    "that includes the fetched bytes. Enumeration is worthless without a way to read what you find; "
+    "find the read primitive first.")
+WEBSEC2_SYSTEM_PROMPT = SIGROK_SYSTEM_PROMPT.replace(
+    _IMAGING_ANCHOR_B,
+    "\n\n" + _TOOLS_GUIDANCE + "\n\n" + _REVERSING_GUIDANCE + "\n\n" + _SSRF_GUIDANCE_STRONG + _IMAGING_ANCHOR_B, 1)
+
 _PROMPT_VARIANTS = {
     "baseline": PRE_IMPROVEMENT_PROMPT,   # pre-improvement: no reasoning / run-and-interact lines
     "frozen":   BASE_SYSTEM_PROMPT,       # selected v1.0.0: improved prompt, no imaging
@@ -278,6 +302,7 @@ _PROMPT_VARIANTS = {
     "tools":    TOOLS_SYSTEM_PROMPT,      # v2.2.0 arm: sigrok + broad per-challenge-type tool pointers
     "decomp":   DECOMP_SYSTEM_PROMPT,     # v2.3.0 arm: tools + decompiler/reversing-workflow guidance
     "websec":   WEBSEC_SYSTEM_PROMPT,     # v2.3.1 arm: decomp + SSRF (scheme variation + read-primitive)
+    "websec2":  WEBSEC2_SYSTEM_PROMPT,    # v2.3.2 arm: decomp + SSRF with file:// as a mandatory first move
 }
 
 

@@ -141,7 +141,9 @@ class ConfigArmTest(unittest.TestCase):
                                     ("2.3.0", "decomp", "ctf-solver-sandbox:v2.3"),
                                     ("2.3.0-sonnet", "decomp", "ctf-solver-sandbox:v2.3"),
                                     ("2.3.1", "websec", "ctf-solver-sandbox:v2.3"),
-                                    ("2.3.1-sonnet", "websec", "ctf-solver-sandbox:v2.3")]:
+                                    ("2.3.1-sonnet", "websec", "ctf-solver-sandbox:v2.3"),
+                                    ("2.3.2", "websec2", "ctf-solver-sandbox:v2.3"),
+                                    ("2.3.2-sonnet", "websec2", "ctf-solver-sandbox:v2.3")]:
             os.environ["CTF_ARM"] = arm
             s = config.load_settings()
             self.assertEqual(s["agent_version"], arm)
@@ -190,6 +192,7 @@ class ConfigArmTest(unittest.TestCase):
         tools = build_system_prompt("tools")
         decomp = build_system_prompt("decomp")
         websec = build_system_prompt("websec")
+        websec2 = build_system_prompt("websec2")
         # baseline (pre-improvement): no reasoning block, no run-and-interact block, no imaging
         self.assertNotIn("Reason before you act", baseline)
         self.assertNotIn("run the program", baseline)
@@ -232,12 +235,19 @@ class ConfigArmTest(unittest.TestCase):
         self.assertIn("file:///etc/passwd", websec)    # SSRF: vary the scheme
         self.assertIn("gopher://", websec)
         self.assertIn("exfiltration channel", websec)  # SSRF: establish the read primitive first
+        self.assertNotIn("mandatory first move", websec)   # soft wording in 2.3.1
+        self.assertNotIn("FIRST move", websec)
+        # websec2 (v2.3.2): SSRF strengthened so file:// is the mandatory first move
+        self.assertIn("file:///flag", websec2)
+        self.assertIn("FIRST move", websec2)               # imperative, not one option in a list
+        self.assertIn("gopher://", websec2)                # still covers scheme variation
         self.assertLess(len(baseline), len(frozen))
         self.assertLess(len(frozen), len(imaging))
         self.assertLess(len(imaging), len(sigrok))
         self.assertLess(len(sigrok), len(tools))
         self.assertLess(len(tools), len(decomp))
         self.assertLess(len(decomp), len(websec))
+        self.assertLess(len(websec), len(websec2))
 
 
 class ExtractCandidateTest(unittest.TestCase):
