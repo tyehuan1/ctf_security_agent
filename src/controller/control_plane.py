@@ -104,11 +104,18 @@ class McpControlPlane:
             raise HTBNotWired(
                 f"could not read host/port from HTB for challenge {cid}. Check the raw container_status "
                 "response field names (parse_connection_info in htb_mcp is defensive on purpose).")
-        # Download the challenge files (controller egress) and stage them like a local dir.
+        # Download the challenge files (controller egress) and stage them like a local dir. Best
+        # effort: many challenges are service-only (no files — the solver works from the live target),
+        # and a download hiccup must not abort an otherwise-solvable attempt. If files exist and the
+        # download fails, the solver still has the target; it just won't have the local artifacts.
         files_dir = Path(tempfile.mkdtemp(prefix=f"htb-mcp-{cid}-"))
         url = client.get_download_link(cid)
         if url:
-            download_challenge_files(url, files_dir)
+            try:
+                download_challenge_files(url, files_dir)
+            except Exception as e:  # noqa: BLE001 - controller-side; keep the attempt alive
+                print(f"[mcp] challenge {cid}: file download failed ({type(e).__name__}: "
+                      f"{str(e)[:120]}); continuing with the live service only")
         chal = ManualChallenge(str(cid), files_dir)
         target = ForwarderTarget(info["host"], int(info["port"]), run_id, settings,
                                  on_stop=lambda: client.stop_container(cid))   # teardown/respawn

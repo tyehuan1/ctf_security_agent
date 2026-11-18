@@ -103,15 +103,20 @@ def parse_connection_info(status) -> Optional[dict]:
     """
     if not isinstance(status, dict):
         return None
-    # search nested dicts for host/ip and port fields under common names
+    # search nested dicts for host/ip and port fields under common names. HTB's real
+    # container_status is {"status": "ready", "hostname": "1.2.3.4", "ports": [33558]} — note the
+    # port lives in a LIST under "ports", so the finder must unwrap a list to its first scalar.
     host_keys = ("ip", "host", "hostname", "server", "address", "connection")
-    port_keys = ("port",)
+    port_keys = ("port", "ports")
 
     def find(o, keys):
         if isinstance(o, dict):
             for k, v in o.items():
-                if k.lower() in keys and isinstance(v, (str, int)):
-                    return v
+                if k.lower() in keys:
+                    if isinstance(v, (str, int)) and not isinstance(v, bool):
+                        return v
+                    if isinstance(v, (list, tuple)) and v and isinstance(v[0], (str, int)):
+                        return v[0]
             for v in o.values():
                 got = find(v, keys)
                 if got is not None:
@@ -243,13 +248,20 @@ class MCPHTBClient:
     def container_status(self, challenge_id) -> dict:
         return self._call("status", {"challenge_id": challenge_id})
 
-    def connection_info(self, challenge_id) -> Optional[dict]:
-        """{host, port} from container_status (falling back to the start response). Defensive."""
-        status = self.container_status(challenge_id)
-        info = parse_connection_info(status)
-        if info is None:
-            info = parse_connection_info(self.start_instance(challenge_id))
-        return info
+    def connection_info(self, challenge_id, *, tries: int = 20, delay_s: float = 3.0) -> Optional[dict]:
+        """{host, port} from container_status, polling until the container is provisioned.
+
+        A freshly started container is not immediately "ready" (no hostname/ports yet), so poll
+        container_status a few times before giving up. Falls back to the start response once.
+        """
+        import time as _time
+        for i in range(max(1, tries)):
+            info = parse_connection_info(self.container_status(challenge_id))
+            if info is not None:
+                return info
+            if i < tries - 1:
+                _time.sleep(delay_s)
+        return parse_connection_info(self.start_instance(challenge_id))
 
     def get_download_link(self, challenge_id) -> Optional[str]:
         return parse_download_url(self._call("download", {"challenge_id": challenge_id}))
