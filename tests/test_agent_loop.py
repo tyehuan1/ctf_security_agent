@@ -144,11 +144,13 @@ class ConfigArmTest(unittest.TestCase):
                                     ("2.3.1-sonnet", "websec", "ctf-solver-sandbox:v2.3"),
                                     ("2.3.2", "websec2", "ctf-solver-sandbox:v2.3"),
                                     ("2.3.2-sonnet", "websec2", "ctf-solver-sandbox:v2.3"),
-                                    ("deepseek-flash", "websec2", "ctf-solver-sandbox:v2.3"),
-                                    ("deepseek-pro", "websec2", "ctf-solver-sandbox:v2.3"),
-                                    ("glm5", "websec2", "ctf-solver-sandbox:v2.3"),
-                                    ("gpt6-luna", "websec2", "ctf-solver-sandbox:v2.3"),
-                                    ("gpt6-sol", "websec2", "ctf-solver-sandbox:v2.3")]:
+                                    ("2.3.3", "websec3", "ctf-solver-sandbox:v2.3"),
+                                    ("2.3.3-sonnet", "websec3", "ctf-solver-sandbox:v2.3"),
+                                    ("deepseek-flash", "websec3", "ctf-solver-sandbox:v2.3"),
+                                    ("deepseek-pro", "websec3", "ctf-solver-sandbox:v2.3"),
+                                    ("glm5", "websec3", "ctf-solver-sandbox:v2.3"),
+                                    ("gpt6-luna", "websec3", "ctf-solver-sandbox:v2.3"),
+                                    ("gpt6-sol", "websec3", "ctf-solver-sandbox:v2.3")]:
             os.environ["CTF_ARM"] = arm
             s = config.load_settings()
             self.assertEqual(s["agent_version"], arm)
@@ -208,6 +210,7 @@ class ConfigArmTest(unittest.TestCase):
         decomp = build_system_prompt("decomp")
         websec = build_system_prompt("websec")
         websec2 = build_system_prompt("websec2")
+        websec3 = build_system_prompt("websec3")
         # baseline (pre-improvement): no reasoning block, no run-and-interact block, no imaging
         self.assertNotIn("Reason before you act", baseline)
         self.assertNotIn("run the program", baseline)
@@ -256,6 +259,11 @@ class ConfigArmTest(unittest.TestCase):
         self.assertIn("file:///flag", websec2)
         self.assertIn("FIRST move", websec2)               # imperative, not one option in a list
         self.assertIn("gopher://", websec2)                # still covers scheme variation
+        self.assertNotIn("heap-note", websec2)             # heap guidance is v2.3.3 only
+        # websec3 (v2.3.3): websec2 plus interactive/heap pwn guidance
+        self.assertIn("file:///flag", websec3)             # inherits SSRF
+        self.assertIn("heap-note", websec3)                # heap-menu recognition
+        self.assertIn("keep ONE connection", websec3)      # stateful-session guidance
         self.assertLess(len(baseline), len(frozen))
         self.assertLess(len(frozen), len(imaging))
         self.assertLess(len(imaging), len(sigrok))
@@ -263,6 +271,7 @@ class ConfigArmTest(unittest.TestCase):
         self.assertLess(len(tools), len(decomp))
         self.assertLess(len(decomp), len(websec))
         self.assertLess(len(websec), len(websec2))
+        self.assertLess(len(websec2), len(websec3))
 
 
 class ExtractCandidateTest(unittest.TestCase):
