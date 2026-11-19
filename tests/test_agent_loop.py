@@ -143,7 +143,12 @@ class ConfigArmTest(unittest.TestCase):
                                     ("2.3.1", "websec", "ctf-solver-sandbox:v2.3"),
                                     ("2.3.1-sonnet", "websec", "ctf-solver-sandbox:v2.3"),
                                     ("2.3.2", "websec2", "ctf-solver-sandbox:v2.3"),
-                                    ("2.3.2-sonnet", "websec2", "ctf-solver-sandbox:v2.3")]:
+                                    ("2.3.2-sonnet", "websec2", "ctf-solver-sandbox:v2.3"),
+                                    ("deepseek-flash", "websec2", "ctf-solver-sandbox:v2.3"),
+                                    ("deepseek-pro", "websec2", "ctf-solver-sandbox:v2.3"),
+                                    ("glm5", "websec2", "ctf-solver-sandbox:v2.3"),
+                                    ("gpt6-luna", "websec2", "ctf-solver-sandbox:v2.3"),
+                                    ("gpt6-sol", "websec2", "ctf-solver-sandbox:v2.3")]:
             os.environ["CTF_ARM"] = arm
             s = config.load_settings()
             self.assertEqual(s["agent_version"], arm)
@@ -167,6 +172,16 @@ class ConfigArmTest(unittest.TestCase):
         # The backup arm changes only the model: sandbox image and prompt match the default arm.
         self.assertEqual(backup["sandbox"]["image"], "ctf-solver-sandbox:v2.2")
         self.assertEqual(backup["sandbox"]["prompt"], "tools")
+
+    def test_alternate_model_arms_pin_gateway_models(self):
+        for arm, model, out_rate in [("deepseek-flash", "deepseek-v4-flash", 0.51),
+                                      ("glm5", "glm-5", 3.20),
+                                      ("gpt6-luna", "gpt-6-luna", 0.50),
+                                      ("gpt6-sol", "gpt-6.2-sol", 10.00)]:
+            os.environ["CTF_ARM"] = arm
+            s = config.load_settings()
+            self.assertEqual(s["model"]["name"], model)
+            self.assertAlmostEqual(s["model"]["pricing"]["output_per_m"], out_rate)
 
     def test_litellm_model_env_overrides_arm_model(self):
         os.environ["CTF_ARM"] = "2.2.0-sonnet"

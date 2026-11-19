@@ -59,6 +59,17 @@ ARMS = {
     "2.3.1-sonnet": {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec", "model": "claude-sonnet-5-5"},
     "2.3.2":        {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec2"},
     "2.3.2-sonnet": {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec2", "model": "claude-sonnet-5-5"},
+    # --- Alternate-model arms (ADJUST HERE to add/change a model) --------------------------------
+    # Same v2.3 sandbox + websec2 prompt as the default, but the model is pinned to a non-Claude
+    # model served by the Duke gateway. Open models (deepseek/glm) are far less likely to
+    # content-filter offensive challenges than Claude Sonnet. Select one at run time with
+    # `--prompt <arm-name>` (e.g. --prompt deepseek-flash). To add another: copy a line, change the
+    # "model" to the gateway's exact model id, and add its per-1M rates to MODEL_PRICING below.
+    "deepseek-flash": {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec2", "model": "deepseek-v4-flash"},
+    "deepseek-pro":   {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec2", "model": "deepseek-v4-pro"},
+    "glm5":           {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec2", "model": "glm-5"},
+    "gpt6-luna":      {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec2", "model": "gpt-6-luna"},
+    "gpt6-sol":       {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec2", "model": "gpt-6.2-sol"},
 }
 
 # Fallback per-token rates (USD per 1M tokens), used only when the gateway omits the
@@ -68,6 +79,14 @@ ARMS = {
 MODEL_PRICING = {
     "claude-haiku-5-5":  {"input_per_m": 0.10, "cached_input_per_m": 0.01, "output_per_m": 0.50},
     "claude-sonnet-5-5": {"input_per_m": 2.00, "cached_input_per_m": 0.10, "output_per_m": 10.00},
+    # Duke-gateway non-Claude models (rates from GET /v1/model/info, 2026-11-18). No prompt-cache
+    # discount, so cached rate == input rate. The gateway's x-litellm-response-cost header still
+    # wins when present; these are the fallback.
+    "deepseek-v4-flash": {"input_per_m": 0.19, "cached_input_per_m": 0.19, "output_per_m": 0.51},
+    "deepseek-v4-pro":   {"input_per_m": 1.74, "cached_input_per_m": 1.74, "output_per_m": 3.48},
+    "glm-5":             {"input_per_m": 1.00, "cached_input_per_m": 1.00, "output_per_m": 3.20},
+    "gpt-6-luna":        {"input_per_m": 0.10, "cached_input_per_m": 0.10, "output_per_m": 0.50},
+    "gpt-6.2-sol":       {"input_per_m": 2.00, "cached_input_per_m": 2.00, "output_per_m": 10.00},
 }
 
 
