@@ -325,6 +325,19 @@ WEBSEC4_SYSTEM_PROMPT = SIGROK_SYSTEM_PROMPT.replace(
     "\n\n" + _TOOLS_GUIDANCE + "\n\n" + _REVERSING_GUIDANCE + "\n\n" + _SSRF_GUIDANCE_STRONG
     + "\n\n" + _HEAP_GUIDANCE + "\n\n" + _SOURCE_FLAG_GUIDANCE + _IMAGING_ANCHOR_B, 1)
 
+# v2.3.5 arm: hard submission discipline. On Dash Rush the agent twice submitted a source-hardcoded
+# placeholder it only inferred was the flag; this forbids auto-submitting anything not returned by
+# the live target.
+_SUBMIT_DISCIPLINE_GUIDANCE = (
+    "Flag submission discipline:\n"
+    "  - Only auto-submit a flag ACTUALLY RETURNED by the live target. Do not submit a candidate "
+    "derived from source, inferred, or that you yourself qualify as 'likely' / 'probably' the flag.")
+WEBSEC5_SYSTEM_PROMPT = SIGROK_SYSTEM_PROMPT.replace(
+    _IMAGING_ANCHOR_B,
+    "\n\n" + _TOOLS_GUIDANCE + "\n\n" + _REVERSING_GUIDANCE + "\n\n" + _SSRF_GUIDANCE_STRONG
+    + "\n\n" + _HEAP_GUIDANCE + "\n\n" + _SOURCE_FLAG_GUIDANCE + "\n\n" + _SUBMIT_DISCIPLINE_GUIDANCE
+    + _IMAGING_ANCHOR_B, 1)
+
 _PROMPT_VARIANTS = {
     "baseline": PRE_IMPROVEMENT_PROMPT,   # pre-improvement: no reasoning / run-and-interact lines
     "frozen":   BASE_SYSTEM_PROMPT,       # selected v1.0.0: improved prompt, no imaging
@@ -336,6 +349,7 @@ _PROMPT_VARIANTS = {
     "websec2":  WEBSEC2_SYSTEM_PROMPT,    # v2.3.2 arm: decomp + SSRF with file:// as a mandatory first move
     "websec3":  WEBSEC3_SYSTEM_PROMPT,    # v2.3.3 arm: websec2 + interactive/heap pwn guidance
     "websec4":  WEBSEC4_SYSTEM_PROMPT,    # v2.3.4 arm: websec3 + source-placeholder-flag rule
+    "websec5":  WEBSEC5_SYSTEM_PROMPT,    # v2.3.5 arm: websec4 + submit-only-live-target-flags rule
 }
 
 

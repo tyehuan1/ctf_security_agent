@@ -68,8 +68,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--challenge-id", default=None, help="HTB numeric challenge id (required for --platform mcp)")
     ap.add_argument("--description", default=None, help="override the challenge description shown to the solver")
     ap.add_argument("--trial", type=int, default=1)
-    ap.add_argument("--prompt", choices=sorted(config.ARMS), default="2.3.4",
-                    help="solver arm (sets CTF_ARM); default 2.3.4 = Haiku 5.5 with the full tooling "
+    ap.add_argument("--prompt", choices=sorted(config.ARMS), default="2.3.5",
+                    help="solver arm (sets CTF_ARM); default 2.3.5 = Haiku 5.5 with the full tooling "
                          "(imaging+OCR, sigrok, gerbv, radare2/z3/tshark/foremost/libc-database), a "
                          "Ghidra decompiler (pdg), SSRF (file:// first), interactive/heap pwn guidance, "
                          "and the source-placeholder-flag rule. Pass an alternate-model arm "
