@@ -61,17 +61,19 @@ ARMS = {
     "2.3.2-sonnet": {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec2", "model": "claude-sonnet-5-5"},
     "2.3.3":        {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec3"},
     "2.3.3-sonnet": {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec3", "model": "claude-sonnet-5-5"},
+    "2.3.4":        {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec4"},
+    "2.3.4-sonnet": {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec4", "model": "claude-sonnet-5-5"},
     # --- Alternate-model arms (ADJUST HERE to add/change a model) --------------------------------
-    # Same v2.3 sandbox + latest prompt (websec3) as the default, but the model is pinned to a
+    # Same v2.3 sandbox + latest prompt (websec4) as the default, but the model is pinned to a
     # non-Claude model served by the Duke gateway. Open models (deepseek/glm) are far less likely to
     # content-filter offensive challenges than Claude Sonnet. Select one at run time with
     # `--prompt <arm-name>` (e.g. --prompt deepseek-flash). To add another: copy a line, change the
     # "model" to the gateway's exact model id, and add its per-1M rates to MODEL_PRICING below.
-    "deepseek-flash": {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec3", "model": "deepseek-v4-flash"},
-    "deepseek-pro":   {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec3", "model": "deepseek-v4-pro"},
-    "glm5":           {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec3", "model": "glm-5"},
-    "gpt6-luna":      {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec3", "model": "gpt-6-luna"},
-    "gpt6-sol":       {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec3", "model": "gpt-6.2-sol"},
+    "deepseek-flash": {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec4", "model": "deepseek-v4-flash"},
+    "deepseek-pro":   {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec4", "model": "deepseek-v4-pro"},
+    "glm5":           {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec4", "model": "glm-5"},
+    "gpt6-luna":      {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec4", "model": "gpt-6-luna"},
+    "gpt6-sol":       {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec4", "model": "gpt-6.2-sol"},
 }
 
 # Fallback per-token rates (USD per 1M tokens), used only when the gateway omits the
