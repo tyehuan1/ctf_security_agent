@@ -65,17 +65,25 @@ ARMS = {
     "2.3.4-sonnet": {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec4", "model": "claude-sonnet-5-5"},
     "2.3.5":        {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec5"},
     "2.3.5-sonnet": {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec5", "model": "claude-sonnet-5-5"},
+    "2.3.6":        {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec6"},
+    "2.3.6-sonnet": {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec6", "model": "claude-sonnet-5-5"},
+    # v2.4 image = v2.3 + John the Ripper + rockyou.txt + impacket (password cracking + Kerberos
+    # ticket tooling). Same websec6 prompt. "2.4.0" is the default (Haiku 5.5, from settings).
+    "2.4.0":        {"image": "ctf-solver-sandbox:v2.4", "prompt": "websec6"},
+    "2.4.0-sonnet": {"image": "ctf-solver-sandbox:v2.4", "prompt": "websec6", "model": "claude-sonnet-5-5"},
+    "2.4.1":        {"image": "ctf-solver-sandbox:v2.4", "prompt": "websec7"},
+    "2.4.1-sonnet": {"image": "ctf-solver-sandbox:v2.4", "prompt": "websec7", "model": "claude-sonnet-5-5"},
     # --- Alternate-model arms (ADJUST HERE to add/change a model) --------------------------------
-    # Same v2.3 sandbox + latest prompt (websec5) as the default, but the model is pinned to a
-    # non-Claude model served by the Duke gateway. Open models (deepseek/glm) are far less likely to
-    # content-filter offensive challenges than Claude Sonnet. Select one at run time with
-    # `--prompt <arm-name>` (e.g. --prompt deepseek-flash). To add another: copy a line, change the
-    # "model" to the gateway's exact model id, and add its per-1M rates to MODEL_PRICING below.
-    "deepseek-flash": {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec5", "model": "deepseek-v4-flash"},
-    "deepseek-pro":   {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec5", "model": "deepseek-v4-pro"},
-    "glm5":           {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec5", "model": "glm-5"},
-    "gpt6-luna":      {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec5", "model": "gpt-6-luna"},
-    "gpt6-sol":       {"image": "ctf-solver-sandbox:v2.3", "prompt": "websec5", "model": "gpt-6.2-sol"},
+    # Latest sandbox (v2.4) + latest prompt (websec7), but the model is pinned to a non-Claude model
+    # served by the Duke gateway. Open models (deepseek/glm) are far less likely to content-filter
+    # offensive challenges than Claude Sonnet. Select one at run time with `--prompt <arm-name>`
+    # (e.g. --prompt deepseek-flash). To add another: copy a line, change the "model" to the gateway's
+    # exact model id, and add its per-1M rates to MODEL_PRICING below.
+    "deepseek-flash": {"image": "ctf-solver-sandbox:v2.4", "prompt": "websec7", "model": "deepseek-v4-flash"},
+    "deepseek-pro":   {"image": "ctf-solver-sandbox:v2.4", "prompt": "websec7", "model": "deepseek-v4-pro"},
+    "glm5":           {"image": "ctf-solver-sandbox:v2.4", "prompt": "websec7", "model": "glm-5"},
+    "gpt6-luna":      {"image": "ctf-solver-sandbox:v2.4", "prompt": "websec7", "model": "gpt-6-luna"},
+    "gpt6-sol":       {"image": "ctf-solver-sandbox:v2.4", "prompt": "websec7", "model": "gpt-6.2-sol"},
 }
 
 # Fallback per-token rates (USD per 1M tokens), used only when the gateway omits the

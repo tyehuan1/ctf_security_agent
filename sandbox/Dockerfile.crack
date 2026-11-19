@@ -1,0 +1,29 @@
+# CTF solver sandbox image — CRACKING/TICKETS arm (image v2.4).
+#
+# v2.3 (decompiler) plus password-cracking + Kerberos-ticket tooling:
+#   - john (John the Ripper) + the rockyou.txt wordlist at /usr/share/wordlists/rockyou.txt
+#   - impacket (library + example scripts, e.g. ticketer / getTGT / describeTicket) for Kerberos
+#     ticket parsing/formatting and related AD tooling.
+# Same five-tool interface, same isolation; just more tools reachable via run_shell/python_exec.
+#
+# Build:  docker build -f sandbox/Dockerfile.crack -t ctf-solver-sandbox:v2.4 sandbox/
+FROM ctf-solver-sandbox:v2.3
+
+ENV DEBIAN_FRONTEND=noninteractive
+USER root
+
+# John the Ripper + the rockyou wordlist (downloaded from a stable mirror; ~134 MB uncompressed).
+RUN apt-get update && apt-get install -y --no-install-recommends john curl ca-certificates \
+    && mkdir -p /usr/share/wordlists \
+    && curl -fsSL -o /usr/share/wordlists/rockyou.txt \
+        https://github.com/brannondorsey/naive-hashcat/releases/download/data/rockyou.txt \
+    && test -s /usr/share/wordlists/rockyou.txt \
+    && chmod 0644 /usr/share/wordlists/rockyou.txt \
+    && rm -rf /var/lib/apt/lists/*
+
+# impacket (ticket parsing/formatting + AD tooling). Installs the library and impacket-* scripts.
+RUN pip install --no-cache-dir impacket
+
+USER solver
+WORKDIR /workspace
+CMD ["sleep", "infinity"]

@@ -338,6 +338,32 @@ WEBSEC5_SYSTEM_PROMPT = SIGROK_SYSTEM_PROMPT.replace(
     + "\n\n" + _HEAP_GUIDANCE + "\n\n" + _SOURCE_FLAG_GUIDANCE + "\n\n" + _SUBMIT_DISCIPLINE_GUIDANCE
     + _IMAGING_ANCHOR_B, 1)
 
+# v2.3.6 arm: adds adversarial-ML/optimization guidance — do the search in a self-contained code loop,
+# not one step per model turn (from compute-heavy challenges timing out on per-turn iteration).
+_ADVERSARIAL_GUIDANCE = (
+    "Optimization / adversarial-ML challenges:\n"
+    "  - For optimization/adversarial-ML challenges (fool a classifier, maximize an output, search a "
+    "parameter space), write a self-contained search loop in code that iterates autonomously against "
+    "the target — don't do the iteration one step per model turn.")
+WEBSEC6_SYSTEM_PROMPT = SIGROK_SYSTEM_PROMPT.replace(
+    _IMAGING_ANCHOR_B,
+    "\n\n" + _TOOLS_GUIDANCE + "\n\n" + _REVERSING_GUIDANCE + "\n\n" + _SSRF_GUIDANCE_STRONG
+    + "\n\n" + _HEAP_GUIDANCE + "\n\n" + _SOURCE_FLAG_GUIDANCE + "\n\n" + _SUBMIT_DISCIPLINE_GUIDANCE
+    + "\n\n" + _ADVERSARIAL_GUIDANCE + _IMAGING_ANCHOR_B, 1)
+
+# v2.4.1 arm: adds Kerberoasting guidance (pairs with the v2.4 image's John + rockyou + impacket) —
+# crack extracted Kerberos tickets offline rather than brute-forcing ciphers blind.
+_KERBEROS_GUIDANCE = (
+    "Kerberos / Active Directory in captures:\n"
+    "  - If a pcap contains Kerberos tickets (especially RC4 / etype 23) or AD traffic, extract the "
+    "ticket and crack it OFFLINE with John/hashcat + a wordlist (Kerberoasting) rather than "
+    "brute-forcing ciphers blind.")
+WEBSEC7_SYSTEM_PROMPT = SIGROK_SYSTEM_PROMPT.replace(
+    _IMAGING_ANCHOR_B,
+    "\n\n" + _TOOLS_GUIDANCE + "\n\n" + _REVERSING_GUIDANCE + "\n\n" + _SSRF_GUIDANCE_STRONG
+    + "\n\n" + _HEAP_GUIDANCE + "\n\n" + _SOURCE_FLAG_GUIDANCE + "\n\n" + _SUBMIT_DISCIPLINE_GUIDANCE
+    + "\n\n" + _ADVERSARIAL_GUIDANCE + "\n\n" + _KERBEROS_GUIDANCE + _IMAGING_ANCHOR_B, 1)
+
 _PROMPT_VARIANTS = {
     "baseline": PRE_IMPROVEMENT_PROMPT,   # pre-improvement: no reasoning / run-and-interact lines
     "frozen":   BASE_SYSTEM_PROMPT,       # selected v1.0.0: improved prompt, no imaging
@@ -350,6 +376,8 @@ _PROMPT_VARIANTS = {
     "websec3":  WEBSEC3_SYSTEM_PROMPT,    # v2.3.3 arm: websec2 + interactive/heap pwn guidance
     "websec4":  WEBSEC4_SYSTEM_PROMPT,    # v2.3.4 arm: websec3 + source-placeholder-flag rule
     "websec5":  WEBSEC5_SYSTEM_PROMPT,    # v2.3.5 arm: websec4 + submit-only-live-target-flags rule
+    "websec6":  WEBSEC6_SYSTEM_PROMPT,    # v2.3.6 arm: websec5 + adversarial-ML/self-contained-loop rule
+    "websec7":  WEBSEC7_SYSTEM_PROMPT,    # v2.4.1 arm: websec6 + Kerberoasting (pcap ticket cracking)
 }
 
 

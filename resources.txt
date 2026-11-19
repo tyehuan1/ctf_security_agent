@@ -40,7 +40,14 @@ Sandbox images (built from sandbox/; recorded with `docker image inspect --forma
                            (v2.3.2 = SSRF strengthened so file:// is a mandatory first move); all reuse
                            this image unchanged. The 2.3.1 bump added controller-side download fixes
                            (clean signed-URL fetch, retry, zip/tar extract, loud empty-staging); 2.3.2
-                           is prompt-only.
+                           is prompt-only. websec3..6 (2.3.3 heap pwn, 2.3.4 source-placeholder-flag,
+                           2.3.5 submit-only-live-flags, 2.3.6 adversarial-ML loop) are prompt-only too.
+  ctf-solver-sandbox:v2.4  sha256:58eca245f7b05687fd3f665903692c7941ceb5758659934b65f7b7093b16eff4
+                           sandbox/Dockerfile.crack — cracking/tickets arm (v2.4.0, default for HTB):
+                           v2.3 + John the Ripper + rockyou.txt (14.3M lines, /usr/share/wordlists/) +
+                           impacket 0.13.1 (ticket tooling: describeTicket.py / ticketer.py /
+                           ticketConverter.py / getTGT.py / secretsdump.py / GetUserSPNs.py). ~662 MB.
+                           Uses the websec6 prompt; the 2.4.0 arms + the alternate-model arms use it.
 
 Windows checkout notes (content is unchanged; only on-disk layout differs)
   - Repo-local git config: core.protectNTFS=false, core.autocrlf=false, core.eol=lf, core.longpaths=true

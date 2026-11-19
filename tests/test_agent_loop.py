@@ -150,11 +150,17 @@ class ConfigArmTest(unittest.TestCase):
                                     ("2.3.4-sonnet", "websec4", "ctf-solver-sandbox:v2.3"),
                                     ("2.3.5", "websec5", "ctf-solver-sandbox:v2.3"),
                                     ("2.3.5-sonnet", "websec5", "ctf-solver-sandbox:v2.3"),
-                                    ("deepseek-flash", "websec5", "ctf-solver-sandbox:v2.3"),
-                                    ("deepseek-pro", "websec5", "ctf-solver-sandbox:v2.3"),
-                                    ("glm5", "websec5", "ctf-solver-sandbox:v2.3"),
-                                    ("gpt6-luna", "websec5", "ctf-solver-sandbox:v2.3"),
-                                    ("gpt6-sol", "websec5", "ctf-solver-sandbox:v2.3")]:
+                                    ("2.3.6", "websec6", "ctf-solver-sandbox:v2.3"),
+                                    ("2.3.6-sonnet", "websec6", "ctf-solver-sandbox:v2.3"),
+                                    ("2.4.0", "websec6", "ctf-solver-sandbox:v2.4"),
+                                    ("2.4.0-sonnet", "websec6", "ctf-solver-sandbox:v2.4"),
+                                    ("2.4.1", "websec7", "ctf-solver-sandbox:v2.4"),
+                                    ("2.4.1-sonnet", "websec7", "ctf-solver-sandbox:v2.4"),
+                                    ("deepseek-flash", "websec7", "ctf-solver-sandbox:v2.4"),
+                                    ("deepseek-pro", "websec7", "ctf-solver-sandbox:v2.4"),
+                                    ("glm5", "websec7", "ctf-solver-sandbox:v2.4"),
+                                    ("gpt6-luna", "websec7", "ctf-solver-sandbox:v2.4"),
+                                    ("gpt6-sol", "websec7", "ctf-solver-sandbox:v2.4")]:
             os.environ["CTF_ARM"] = arm
             s = config.load_settings()
             self.assertEqual(s["agent_version"], arm)
@@ -217,6 +223,8 @@ class ConfigArmTest(unittest.TestCase):
         websec3 = build_system_prompt("websec3")
         websec4 = build_system_prompt("websec4")
         websec5 = build_system_prompt("websec5")
+        websec6 = build_system_prompt("websec6")
+        websec7 = build_system_prompt("websec7")
         # baseline (pre-improvement): no reasoning block, no run-and-interact block, no imaging
         self.assertNotIn("Reason before you act", baseline)
         self.assertNotIn("run the program", baseline)
@@ -279,6 +287,14 @@ class ConfigArmTest(unittest.TestCase):
         # websec5 (v2.3.5): websec4 plus the submit-only-live-target-flags rule
         self.assertIn("PLACEHOLDER", websec5)              # inherits source-flag rule
         self.assertIn("ACTUALLY RETURNED by the live target", websec5)
+        self.assertNotIn("adversarial-ML", websec5)        # adversarial rule is v2.3.6 only
+        # websec6 (v2.3.6): websec5 plus adversarial-ML self-contained-loop guidance
+        self.assertIn("ACTUALLY RETURNED by the live target", websec6)  # inherits submit rule
+        self.assertIn("self-contained search loop", websec6)
+        self.assertNotIn("Kerberoasting", websec6)         # kerberos rule is v2.4.1 only
+        # websec7 (v2.4.1): websec6 plus Kerberoasting / pcap-ticket guidance
+        self.assertIn("self-contained search loop", websec7)  # inherits adversarial rule
+        self.assertIn("Kerberoasting", websec7)
         self.assertLess(len(baseline), len(frozen))
         self.assertLess(len(frozen), len(imaging))
         self.assertLess(len(imaging), len(sigrok))
@@ -289,6 +305,8 @@ class ConfigArmTest(unittest.TestCase):
         self.assertLess(len(websec2), len(websec3))
         self.assertLess(len(websec3), len(websec4))
         self.assertLess(len(websec4), len(websec5))
+        self.assertLess(len(websec5), len(websec6))
+        self.assertLess(len(websec6), len(websec7))
 
 
 class ExtractCandidateTest(unittest.TestCase):
